@@ -2,343 +2,162 @@
 AGENTIC INSURANCE UNDERWRITING SYSTEM - MVP IMPLEMENTATION
 ================================================================================
 Date: February 22, 2026
-Status: ✅ COMPLETE & READY FOR DEPLOYMENT
-Coverage: 80%+ unit & integration tests
+Status: MVP COMPLETE - All 36 tests passing
+Tech Stack: LangGraph StateGraph + Anthropic Claude + AWS Lambda
 
 ================================================================================
 DELIVERABLES
 ================================================================================
 
-📚 DOCUMENTATION (5 guides, 80+ KB)
-  ✅ START_HERE.md                    - Entry point (YOU ARE HERE)
-  ✅ README.md                        - Overview + API reference
-  ✅ QUICKSTART.md                    - 5-minute setup guide
-  ✅ DELIVERABLES.md                  - Detailed deliverables summary
-  ✅ docs/REQUIREMENTS_AND_ARCHITECTURE.md   - 300+ line spec
-  ✅ docs/TRACEABILITY_MATRIX.md              - FR/NFR → Code mapping
-  ✅ docs/IMPLEMENTATION_GUIDE.md             - How to use & extend
-  ✅ docs/OPERATIONS_RUNBOOK.md               - Deploy, monitor, troubleshoot
-  ✅ docs/REPO_STRUCTURE.md                   - File manifest
+DOCUMENTATION (9 guides)
+  README.md                              - System overview + API reference
+  QUICKSTART.md                          - 5-minute setup guide
+  START_HERE.md                          - Entry point for new developers
+  DELIVERABLES.md                        - Detailed deliverables summary
+  MANIFEST.txt                           - This file (project inventory)
+  docs/REQUIREMENTS_AND_ARCHITECTURE.md  - Full spec + architecture
+  docs/TRACEABILITY_MATRIX.md            - FR/NFR -> Code mapping
+  docs/IMPLEMENTATION_GUIDE.md           - How to use & extend
+  docs/OPERATIONS_RUNBOOK.md             - Deploy, monitor, troubleshoot
+  docs/REPO_STRUCTURE.md                 - File manifest
 
-🔧 SOURCE CODE (5 modules, 2,000+ lines)
-  ✅ src/core/state_manager.py        - State CRUD + audit trail (350 lines)
-  ✅ src/tools/all_tools.py           - 12 tools (800 lines)
-  ✅ src/orchestration/supervisor_agent.py - Main orchestrator (600 lines)
-  ✅ src/api/handlers.py              - API handlers (300 lines)
-  ✅ src/__init__.py, src/core/__init__.py, src/tools/__init__.py, etc.
+SOURCE CODE (LangGraph StateGraph workflow)
+  src/orchestration/workflow.py          - LangGraph StateGraph (10 nodes, 3 conditional edges)
+  src/orchestration/supervisor_agent.py  - Supervisor orchestrator (wraps workflow)
+  src/tools/decision_logic.py            - NAICS classification, guidelines, risk/pricing
+  src/tools/document_understanding.py    - OCR extraction, image hazard analysis
+  src/tools/data_acquisition.py          - Internal claims, external APIs, web research
+  src/tools/communication.py             - Email drafting, quote PDF generation
+  src/core/state_manager.py              - State CRUD + audit trail + overrides
+  src/api/handlers.py                    - FastAPI app + Lambda handler classes
 
-⚡ LAMBDA HANDLERS (3 entry points)
-  ✅ lambda/submission_handler.py     - Process submissions
-  ✅ lambda/override_handler.py       - Apply human overrides
-  ✅ lambda/query_handler.py          - Query submission status
-  ✅ lambda/__init__.py
+ENTRY POINTS
+  main.py                                - CLI demo + FastAPI server launcher
+  app.py                                 - Streamlit workbench (human-in-the-loop)
 
-🧪 TESTS (50+ tests, 80%+ coverage)
-  ✅ tests/test_all.py                - Unit + integration tests (600 lines)
-  ✅ tests/__init__.py
+LAMBDA HANDLERS (3 entry points)
+  lambda/submission_handler.py           - Process submissions
+  lambda/override_handler.py             - Apply human overrides
+  lambda/query_handler.py                - Query submission status
 
-☁️ INFRASTRUCTURE (AWS Deployment)
-  ✅ infrastructure/sam_template.yaml - AWS SAM template
-  ✅ .env.example                     - Environment configuration template
-  ✅ requirements.txt                 - Python dependencies
-  ✅ pyproject.toml                   - Project configuration
-  ✅ Makefile                         - Build & deployment automation
-  ✅ .gitignore                       - Git ignore rules
+TESTS
+  tests/test_all.py                      - 36 tests across 8 test classes
 
-📋 CONFIGURATION
-  ✅ config/config.txt                - Configuration examples
+INFRASTRUCTURE
+  infrastructure/sam_template.yaml       - AWS SAM template (3 Lambda + API Gateway)
+  .env                                   - Environment credentials (30+ variables)
+  .env.example                           - Environment template
+  requirements.txt                       - Python dependencies
+  pyproject.toml                         - Project configuration
+  Makefile                               - Build & test automation
+  .gitignore                             - Git ignore rules
+
+CONFIGURATION
+  config/config.txt                      - Reference configuration examples
 
 ================================================================================
 KEY METRICS
 ================================================================================
 
-Code Statistics:
-  - Total Source Lines of Code: 2,000+
-  - Total Test Lines: 600+
-  - Test Cases: 50+
-  - Test Coverage: 80%+
-  - Documentation: 80+ KB (5 guides)
-
 Architecture:
-  - Core Modules: 5
-  - Tools Implemented: 12
+  - Workflow Engine: LangGraph StateGraph (fully implemented)
+  - Workflow Nodes: 10
+  - Conditional Edges: 3 (data completeness, knockout rules, human decision)
+  - Loop-back Support: Modify -> Risk Assessment
+  - Tools Implemented: 12 (across 4 modules)
   - Agents: 6 (1 Supervisor + 5 sub-agents)
-  - Workflow Phases: 5 (Ingestion → Extraction → Enrichment → Analysis → Output)
+  - Workflow Phases: 3 (Ingestion & Triage, Qualification, The Workbench)
   - Decision Outcomes: 4 (QUOTED, DECLINED, MISSING_INFO, MANUAL_REVIEW)
 
 Testing:
-  - Unit Tests: 25+
-  - Integration Tests: 8+
-  - Golden Test Cases: 8 (regression harness)
-  - Golden Test IDs: GTC-001 through GTC-008
+  - Total Tests: 36
+  - Test Classes: 8
+  - Categories: Document Tools(4), Decision Tools(4), Data Tools(3),
+                Communication Tools(4), State Manager(7), Workflow Nodes(3),
+                Conditional Edges(6), End-to-End(3)
+  - All tests pass in < 1 second
 
 Performance:
-  - End-to-End Latency: 10-20 seconds (target: < 30s)
+  - End-to-End Latency: < 1 second (mock data)
   - Concurrent Submissions: 100+ (Lambda auto-scales)
-  - Uptime SLA: 99.5% (AWS Lambda native)
-
-================================================================================
-QUICK START
-================================================================================
-
-1. Setup (2 minutes):
-   $ python -m venv venv
-   $ source venv/bin/activate  # Windows: venv\Scripts\activate
-   $ pip install -r requirements.txt
-   $ cp .env.example .env
-   [Edit .env: add ANTHROPIC_API_KEY]
-
-2. Test (2 minutes):
-   $ make test-coverage
-   Expected: 80%+ coverage, all tests pass
-
-3. Deploy (5 minutes):
-   $ sam build
-   $ sam deploy --stack-name agentic-underwriting-dev
-
-4. Use (1 minute):
-   $ curl -X POST https://api.../dev/submit \
-     -H "Content-Type: application/json" \
-     -d '{"email_subject":"...","email_body":"...","broker_email":"..."}'
 
 ================================================================================
 WHAT THIS SYSTEM DOES
 ================================================================================
 
-Insurance submissions flow through 5 phases:
+Insurance submissions flow through a 3-phase LangGraph StateGraph workflow:
 
-  1. INGESTION     → Parse email + attachments
-  2. EXTRACTION    → Extract data via OCR + LLM schema mapping
-  3. ENRICHMENT    → Fetch external data in PARALLEL
-                       • Internal claims history
-                       • External credit/property risk (D&B, HazardHub)
-                       • Web research (applicant website, reviews)
-  4. ANALYSIS      → Validate against hard rules + assess risk + calculate premium
-  5. OUTPUT        → Generate appropriate output based on decision
+  Phase 1: Ingestion & Triage
+    START -> ingest_and_classify -> check_data_completeness
+      -> [is_data_complete?]
+          |-- missing_docs -> draft_missing_info -> END
+          |-- data_complete -> (continue to Phase 2)
 
-Possible Outcomes:
-  ✅ QUOTED        → Generate quote email + PDF
-  ❌ DECLINED      → Generate decline letter
-  ⚠️  MISSING_INFO → Request missing documents
-  🔄 MANUAL_REVIEW → Escalate for human review
+  Phase 2: Qualification
+    -> enrichment (3x parallel data retrieval)
+      -> check_knockout_rules
+      -> [knockout_check?]
+          |-- fail -> draft_decline -> END
+          |-- pass -> risk_assessment -> (continue to Phase 3)
+
+  Phase 3: The Workbench
+    -> human_checkpoint (persists state)
+      -> [human_decision?]
+          |-- approve -> generate_quote -> END
+          |-- decline -> draft_decline -> END
+          |-- modify  -> update_state -> risk_assessment (loop back)
+
+Decision Outcomes:
+  QUOTED       - Generate quote email + PDF
+  DECLINED     - Generate decline letter with guideline citations
+  MISSING_INFO - Request missing documents from broker
+  MANUAL_REVIEW - Loop back for re-assessment after modifications
 
 ================================================================================
-KEY FEATURES
+QUICK START
 ================================================================================
 
-Core Functionality:
-  ✅ 5-phase workflow (ingestion → extraction → enrichment → analysis → output)
-  ✅ 12 specialized tools for data processing
-  ✅ SupervisorAgent orchestrator
-  ✅ Parallel data retrieval (3 agents, async-ready)
-  ✅ Rule validation against 4 hard constraints
-  ✅ Risk scoring (0-100) + premium calculation
-  ✅ Draft generation (quotes, declines, requests)
-  ✅ State management + comprehensive audit trail
-  ✅ Human override system
-  ✅ Error handling & graceful degradation
+1. Setup:
+   $ python -m venv venv
+   $ venv\Scripts\activate       # Linux/Mac: source venv/bin/activate
+   $ pip install -r requirements.txt
+   $ cp .env.example .env        # MVP works without changes
 
-API Endpoints:
-  ✅ POST /submit    - Process new submission
-  ✅ POST /override  - Apply human override
-  ✅ GET /status     - Query submission status
+2. Test:
+   $ pytest tests/test_all.py -v
+   Expected: 36 passed
 
-AWS Deployment:
-  ✅ Lambda handlers (submission, override, query)
-  ✅ API Gateway integration
-  ✅ CloudWatch logging
-  ✅ SAM template for easy deployment
-
-Testing:
-  ✅ Unit tests (tools & state management)
-  ✅ Integration tests (end-to-end workflows)
-  ✅ Golden test cases (regression harness)
-  ✅ 80%+ code coverage
+3. Run:
+   $ python main.py              # CLI demo
+   $ streamlit run app.py        # Streamlit workbench
+   $ python main.py --server     # FastAPI server (port 8000)
 
 ================================================================================
 IMPLEMENTATION STATUS
 ================================================================================
 
-✅ COMPLETED (MVP Ready):
+COMPLETED (MVP Ready):
+  - LangGraph StateGraph with 10 nodes and 3 conditional edges
+  - 12 specialized tools across 4 modules
   - Supervisor Agent orchestrator
-  - 12 tools (extract, classify, validate, price, fetch data, draft emails)
+  - Streamlit workbench (human-in-the-loop UI)
+  - FastAPI REST API (5 endpoints)
+  - Lambda handlers (3 functions)
   - State management + audit trail
-  - API handlers (submission, override, query)
-  - Lambda deployment template (SAM)
-  - 50+ unit & integration tests
-  - Comprehensive documentation
+  - Human override system
+  - 36 unit + integration tests (all passing)
+  - Comprehensive documentation (9 guides)
 
-🔄 STUBS (Low Priority for MVP):
-  - LanGraph StateGraph integration (currently plain Python)
-  - Real external APIs (currently mocked)
-  - Actual PDF generation (currently placeholder URLs)
-  - Email sending (currently drafts only)
-  - DynamoDB persistence (currently in-memory)
-  - X-Ray distributed tracing (optional)
+MOCK (Swap to Real for Production):
+  - External APIs (D&B, HazardHub) - currently return mock data
+  - PDF generation - currently returns placeholder S3 URL
+  - Email sending - currently drafts only
+  - DynamoDB persistence - currently in-memory
+  - LLM calls - currently keyword-based classification
 
 ================================================================================
-ASSUMPTIONS & DECISIONS
+STATUS: MVP COMPLETE & READY FOR TESTING
 ================================================================================
-
-ASSUMPTION-1: Mock External APIs (MVP)
-  Current: All data sources return mock responses
-  Rationale: Focus on orchestration logic, not data integration
-  Migration: 2-hour swap to real APIs
-
-ASSUMPTION-2: In-Memory State (MVP)
-  Current: Dict-based state storage
-  Rationale: No database setup required
-  Migration: 1-hour swap to DynamoDB
-
-ASSUMPTION-3: Sequential Enrichment
-  Current: 3 data retrievers run sequentially
-  Rationale: Lambda is single-threaded by design
-  Migration: Use asyncio.gather() in production
-
-ASSUMPTION-4: No LanGraph StateGraph (Yet)
-  Current: Plain Python class with if/else control flow
-  Rationale: Same functionality, simpler to debug
-  Migration: Easy conversion to formal StateGraph
-
-ASSUMPTION-5: No Real PDF/Email (MVP)
-  Current: Placeholder URLs + draft emails
-  Rationale: Focus on core orchestration
-  Migration: 2-3 hours for ReportLab + SES
-
-================================================================================
-DOCUMENTATION ROADMAP
-================================================================================
-
-🚀 For the Impatient (5 min):
-  1. README.md - System overview
-  2. QUICKSTART.md - Get running in 5 min
-
-📚 For Understanding System (30 min):
-  1. IMPLEMENTATION_GUIDE.md - Architecture & design
-  2. README.md - Feature overview
-
-🏗️ For Understanding Requirements (45 min):
-  1. REQUIREMENTS_AND_ARCHITECTURE.md - Detailed specs
-  2. TRACEABILITY_MATRIX.md - FR/NFR → Code mapping
-
-⚙️ For Deploying & Operating (60 min):
-  1. OPERATIONS_RUNBOOK.md - Deploy, monitor, troubleshoot
-  2. Makefile - Automation commands
-
-📋 For Code Review:
-  1. TRACEABILITY_MATRIX.md - Code mapping
-  2. src/orchestration/supervisor_agent.py - Main logic
-  3. src/tools/all_tools.py - Tools
-  4. src/core/state_manager.py - State management
-  5. tests/test_all.py - Tests
-
-================================================================================
-FILE LOCATIONS
-================================================================================
-
-Documentation:
-  - START_HERE.md                     [Entry point]
-  - README.md                         [System overview]
-  - QUICKSTART.md                     [5-minute setup]
-  - DELIVERABLES.md                   [Detailed summary]
-  - MANIFEST.txt                      [This file]
-  - docs/REQUIREMENTS_AND_ARCHITECTURE.md
-  - docs/TRACEABILITY_MATRIX.md
-  - docs/IMPLEMENTATION_GUIDE.md
-  - docs/OPERATIONS_RUNBOOK.md
-  - docs/REPO_STRUCTURE.md
-
-Source Code:
-  - src/core/state_manager.py         [State CRUD, audit trail]
-  - src/tools/all_tools.py            [12 tools]
-  - src/orchestration/supervisor_agent.py [Main orchestrator]
-  - src/api/handlers.py               [API handlers]
-
-Lambda:
-  - lambda/submission_handler.py      [Submit endpoint]
-  - lambda/override_handler.py        [Override endpoint]
-  - lambda/query_handler.py           [Query endpoint]
-
-Tests:
-  - tests/test_all.py                 [50+ test cases]
-
-Configuration:
-  - requirements.txt                  [Python dependencies]
-  - .env.example                      [Environment template]
-  - pyproject.toml                    [Project config]
-  - Makefile                          [Build automation]
-  - infrastructure/sam_template.yaml  [AWS deployment]
-  - config/config.txt                 [Config examples]
-
-================================================================================
-NEXT STEPS
-================================================================================
-
-Immediate (Today):
-  1. Extract this folder
-  2. Read START_HERE.md (this file points you through)
-  3. Read README.md (15 min)
-  4. Read QUICKSTART.md (5 min)
-  5. Run tests: make test-coverage
-
-Short Term (This Week):
-  1. Read REQUIREMENTS_AND_ARCHITECTURE.md
-  2. Review code quality (lint, coverage)
-  3. Deploy to AWS dev environment
-  4. Test end-to-end in AWS
-
-Medium Term (This Month):
-  1. Replace mock APIs with real APIs
-  2. Migrate state to DynamoDB
-  3. Implement real PDF generation
-  4. Add email sending (AWS SES)
-  5. Deploy to staging/production
-
-================================================================================
-SUPPORT & REFERENCES
-================================================================================
-
-Documentation:
-  - README.md              - API reference & features
-  - QUICKSTART.md          - Get started in 5 min
-  - IMPLEMENTATION_GUIDE.md - Architecture & design
-  - OPERATIONS_RUNBOOK.md  - Deploy & monitor
-
-External References:
-  - LanGraph Docs: https://python.langchain.com/docs/langgraph
-  - Anthropic API: https://docs.anthropic.com
-  - AWS SAM: https://docs.aws.amazon.com/serverless-application-model
-
-================================================================================
-CONTACT & ISSUES
-================================================================================
-
-For questions or issues:
-  1. Check OPERATIONS_RUNBOOK.md troubleshooting section
-  2. Check test files for examples
-  3. Review code comments in source files
-  4. Check git history for changes
-
-================================================================================
-STATUS & SIGN-OFF
-================================================================================
-
-✅ Requirements Specification       - COMPLETE
-✅ Architecture Design              - COMPLETE
-✅ Source Code Implementation       - COMPLETE
-✅ Test Suite                       - COMPLETE (80%+ coverage)
-✅ Documentation                    - COMPLETE (5 guides, 80+ KB)
-✅ AWS Deployment Template          - COMPLETE
-✅ Local Development Setup          - COMPLETE
-✅ Configuration Management         - COMPLETE
-✅ Error Handling & Logging         - COMPLETE
-✅ Audit Trail                      - COMPLETE
-
-🎉 READY FOR DEPLOYMENT & TESTING
-
 Generated: 2026-02-22
 MVP Version: 1.0.0
 Python: 3.12+
-Tech Stack: LanGraph + Anthropic Claude + AWS Lambda
-
-================================================================================

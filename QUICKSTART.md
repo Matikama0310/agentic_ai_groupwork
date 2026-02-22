@@ -4,84 +4,90 @@
 
 ```bash
 python -m venv venv
-venv\Scripts\activate # or: source venv/bin/activate 
-pip install -r requirements.txt  
+venv\Scripts\activate          # Linux/Mac: source venv/bin/activate
+pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` with your Anthropic API key.
+No API keys needed for MVP testing (uses mock data).
 
-## 2. Run Tests
-
-```bash
-pytest tests/ -v
-# or use make:
-make test-coverage
-```
-
-## 3. Test Locally
-
-```python
-from src.api.handlers import SubmissionHandler
-
-handler = SubmissionHandler()
-result = handler.handle_submission({
-    'email_subject': 'Test Application',
-    'email_body': 'Applying for coverage...',
-    'broker_email': 'broker@example.com',
-    'broker_name': 'John'
-})
-
-print(f"Decision: {result['decision']}")
-print(f"Premium: ${result['data']['risk_metrics']['annual_premium']}")
-```
-
-## 4. Deploy
+## 2. Run Demo
 
 ```bash
-sam build
-sam deploy --stack-name agentic-underwriting-dev
+python main.py
 ```
 
-## 5. Golden Test Cases
-
-These cover the main workflows:
-
-| Test | Scenario |
-|------|----------|
-| GTC-001 | Happy path (→ QUOTED) |
-| GTC-002 | Missing documents (→ MISSING_INFO) |
-| GTC-004 | Low confidence (→ MANUAL_REVIEW) |
-| GTC-005 | Human override applied |
-| GTC-007 | Parallel enrichment completes |
-
-Run:
-```bash
-pytest tests/test_all.py::TestEndToEndWorkflow -v
+Expected output:
+```
+NorthStar Insurance - Agentic Underwriting System (MVP Demo)
+[1/3] Submitting application: DEMO-20260222-...
+[2/3] Processing complete!
+      Decision: QUOTED
+      Premium:  $2,800.00
+      Risk:     58.6/100
+[3/3] Audit Trail (7 entries)
 ```
 
-## 6. Key Docs
-
-- **README.md** - Overview & API reference
-- **docs/REQUIREMENTS_AND_ARCHITECTURE.md** - Detailed specs
-- **docs/IMPLEMENTATION_GUIDE.md** - How to use & extend
-- **docs/OPERATIONS_RUNBOOK.md** - Deploy & operate
-
-## 7. API Endpoints
+## 3. Run Tests
 
 ```bash
-# Submit
-curl -X POST http://localhost/submit \
+pytest tests/test_all.py -v
+# Expected: 36 passed
+```
+
+## 4. Launch Streamlit Workbench
+
+```bash
+streamlit run app.py
+```
+
+This opens the human-in-the-loop UI where you can:
+- Submit new applications via the sidebar
+- Review extracted data, risk metrics, drafted emails
+- Apply human overrides (approve/decline/modify)
+- View the full audit trail
+
+## 5. Start API Server
+
+```bash
+python main.py --server
+# Docs: http://localhost:8000/docs
+```
+
+## 6. API Endpoints
+
+```bash
+# Submit application
+curl -X POST http://localhost:8000/submit \
   -H "Content-Type: application/json" \
-  -d '{"email_subject":"...","email_body":"...","broker_email":"..."}'
+  -d '{"email_subject":"Test App","email_body":"Restaurant application...","broker_email":"broker@example.com","broker_name":"John"}'
 
-# Override
-curl -X POST http://localhost/override \
+# Override decision
+curl -X POST http://localhost:8000/override \
   -H "Content-Type: application/json" \
-  -d '{"submission_id":"...","user_id":"...","override_decision":"QUOTED"}'
+  -d '{"submission_id":"SUB-...","user_id":"underwriter-001","override_decision":"DECLINED","override_reason":"Failed inspection"}'
 
 # Query status
-curl -X GET "http://localhost/status?submission_id=..."
+curl http://localhost:8000/status/SUB-...
+
+# Health check
+curl http://localhost:8000/health
 ```
 
-See README.md for full API documentation.
+## 7. Key Files
+
+| File | Purpose |
+|------|---------|
+| `main.py` | CLI entry point (demo + server) |
+| `app.py` | Streamlit workbench |
+| `src/orchestration/workflow.py` | LangGraph StateGraph |
+| `src/tools/` | 12 tools in 4 modules |
+| `tests/test_all.py` | 36 tests |
+| `.env` | Credentials (fill for production) |
+
+## 8. Key Docs
+
+- **[README.md](README.md)** - Architecture & API reference
+- **[docs/REPO_STRUCTURE.md](docs/REPO_STRUCTURE.md)** - File layout
+- **[docs/IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md)** - How to extend
+- **[docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md)** - Deploy & operate

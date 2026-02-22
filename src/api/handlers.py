@@ -1,386 +1,203 @@
-# FILE: src/api/handlers.py
 """
-API Handlers: Lambda entry points and request/response handling.
+API Handlers: FastAPI application + Lambda-compatible handlers.
+
+Endpoints:
+  POST /submit    - Process new insurance application
+  POST /override  - Apply human underwriter override
+  GET  /status/{submission_id} - Query submission status
+  GET  /status    - List all submissions
+  GET  /health    - Health check
 """
 
-import json
 import logging
-from typing import Dict, Any, List
-from uuid import uuid4
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
-from src.orchestration.supervisor_agent import SupervisorAgent
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+
 from src.core.state_manager import get_state_manager
+from src.orchestration.supervisor_agent import SupervisorAgent
 
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Pydantic request models
+# ---------------------------------------------------------------------------
+class Attachment(BaseModel):
+    filename: str = ""
+    content: str = ""
+    type: str = ""
+
+
+class SubmissionRequest(BaseModel):
+    email_subject: str
+    email_body: str
+    broker_email: str
+    broker_name: str = ""
+    attachments: List[Attachment] = []
+
+
+class OverrideRequest(BaseModel):
+    submission_id: str
+    user_id: str
+    override_decision: str
+    override_reason: str = ""
+
+
+# ---------------------------------------------------------------------------
+# FastAPI app factory
+# ---------------------------------------------------------------------------
+def create_app() -> FastAPI:
+    """Create and return the FastAPI application."""
+    app = FastAPI(
+        title="NorthStar Underwriting API",
+        description="Agentic AI underwriting system for NorthStar Insurance Group",
+        version="1.0.0",
+    )
+
+    supervisor = SupervisorAgent()
+    sm = get_state_manager()
+
+    @app.post("/submit")
+    def submit(req: SubmissionRequest):
+        sub_id = f"SUB-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:8].upper()}"
+        state = supervisor.process_submission(
+            submission_id=sub_id,
+            email_subject=req.email_subject,
+            email_body=req.email_body,
+            broker_email=req.broker_email,
+            broker_name=req.broker_name,
+            attachments=[a.model_dump() for a in req.attachments],
+        )
+        return {
+            "submission_id": sub_id,
+            "decision": state.decision,
+            "status": state.status,
+            "message": f"Processed. Decision: {state.decision}",
+            "data": sm.get_submission_summary(sub_id),
+        }
+
+    @app.post("/override")
+    def override(req: OverrideRequest):
+        if req.override_decision not in ["QUOTED", "DECLINED", "MISSING_INFO", "MANUAL_REVIEW"]:
+            raise HTTPException(400, f"Invalid override_decision: {req.override_decision}")
+        state = sm.get_state(req.submission_id)
+        if not state:
+            raise HTTPException(404, f"Submission {req.submission_id} not found")
+        sm.apply_override(req.submission_id, req.user_id, req.override_decision, req.override_reason)
+        return {
+            "submission_id": req.submission_id,
+            "message": "Override applied",
+            "data": sm.get_submission_summary(req.submission_id),
+        }
+
+    @app.get("/status/{submission_id}")
+    def status(submission_id: str):
+        summary = sm.get_submission_summary(submission_id)
+        if "error" in summary:
+            raise HTTPException(404, f"Submission {submission_id} not found")
+        return {"message": "Found", "data": summary}
+
+    @app.get("/status")
+    def list_all(status_filter: Optional[str] = None):
+        subs = sm.list_submissions(status=status_filter)
+        return {"message": f"Found {len(subs)} submissions", "data": {"total": len(subs), "submissions": subs}}
+
+    @app.get("/health")
+    def health():
+        return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+    return app
+
+
+# ---------------------------------------------------------------------------
+# Legacy handler classes (Lambda compatibility)
+# ---------------------------------------------------------------------------
 class SubmissionHandler:
-    """Handles new submission requests"""
-    
+    """Handles new submission requests (Lambda-style)."""
+
     def __init__(self):
         self.supervisor = SupervisorAgent()
         self.state_manager = get_state_manager()
-    
+
     def handle_submission(self, event: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Handle incoming submission request.
-        
-        Expected event structure:
-        {
-            "email_subject": "...",
-            "email_body": "...",
-            "broker_email": "...",
-            "broker_name": "...",
-            "attachments": [{"filename": "...", "content": "...", "type": "..."}]
-        }
-        
-        Returns:
-            {
-                "status_code": 200|400|500,
-                "submission_id": "...",
-                "decision": "QUOTED|DECLINED|MISSING_INFO|...",
-                "message": "...",
-                "data": {...}
-            }
-        """
         try:
-            # Validate input
             if not event:
-                return self._error_response(400, "Event is empty")
-            
+                return self._error(400, "Event is empty")
             email_subject = event.get("email_subject", "")
             email_body = event.get("email_body", "")
             broker_email = event.get("broker_email", "")
             broker_name = event.get("broker_name", "")
             attachments = event.get("attachments", [])
-            
-            # Validate required fields
             if not all([email_subject, email_body, broker_email]):
-                return self._error_response(400, "Missing required fields: email_subject, email_body, broker_email")
-            
-            # Generate submission ID
-            submission_id = f"SUB-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:8].upper()}"
-            
-            logger.info(f"Received submission: {submission_id}")
-            
-            # Process submission through supervisor
-            final_state = self.supervisor.process_submission(
-                submission_id=submission_id,
-                email_subject=email_subject,
-                email_body=email_body,
-                broker_email=broker_email,
-                broker_name=broker_name,
-                attachments=attachments
+                return self._error(400, "Missing required fields: email_subject, email_body, broker_email")
+            sub_id = f"SUB-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:8].upper()}"
+            state = self.supervisor.process_submission(
+                sub_id, email_subject, email_body, broker_email, broker_name, attachments,
             )
-            
-            # Prepare response
-            summary = self.state_manager.get_submission_summary(submission_id)
-            
             return {
                 "status_code": 200,
-                "submission_id": submission_id,
-                "decision": final_state.decision,
-                "message": f"Submission processed successfully. Decision: {final_state.decision}",
-                "data": summary
+                "submission_id": sub_id,
+                "decision": state.decision,
+                "message": f"Processed. Decision: {state.decision}",
+                "data": self.state_manager.get_submission_summary(sub_id),
             }
-        
-        except ValueError as e:
-            logger.error(f"Validation error: {e}")
-            return self._error_response(400, str(e))
         except Exception as e:
-            logger.exception("Unexpected error in submission handler")
-            return self._error_response(500, f"Internal server error: {str(e)}")
-    
-    def _error_response(self, status_code: int, message: str) -> Dict[str, Any]:
-        """Generate error response"""
-        return {
-            "status_code": status_code,
-            "submission_id": None,
-            "decision": None,
-            "message": message,
-            "data": None
-        }
+            logger.exception("Submission error")
+            return self._error(500, str(e))
+
+    def _error(self, code: int, msg: str):
+        return {"status_code": code, "submission_id": None, "decision": None, "message": msg, "data": None}
 
 
 class OverrideHandler:
-    """Handles human overrides to AI decisions"""
-    
+    """Handles human overrides (Lambda-style)."""
+
     def __init__(self):
         self.state_manager = get_state_manager()
-    
+
     def handle_override(self, event: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Handle override request.
-        
-        Expected event structure:
-        {
-            "submission_id": "...",
-            "user_id": "...",
-            "override_decision": "QUOTED|DECLINED|MISSING_INFO",
-            "override_reason": "..."
-        }
-        
-        Returns:
-            {
-                "status_code": 200|400|404,
-                "submission_id": "...",
-                "message": "...",
-                "data": {...}
-            }
-        """
         try:
-            submission_id = event.get("submission_id")
-            user_id = event.get("user_id")
-            override_decision = event.get("override_decision")
-            override_reason = event.get("override_reason", "")
-            
-            # Validate input
-            if not all([submission_id, user_id, override_decision]):
-                return self._error_response(
-                    400, "Missing required fields: submission_id, user_id, override_decision"
-                )
-            
-            if override_decision not in ["QUOTED", "DECLINED", "MISSING_INFO", "MANUAL_REVIEW"]:
-                return self._error_response(400, f"Invalid override_decision: {override_decision}")
-            
-            # Get state
-            state = self.state_manager.get_state(submission_id)
+            sid = event.get("submission_id")
+            uid = event.get("user_id")
+            dec = event.get("override_decision")
+            reason = event.get("override_reason", "")
+            if not all([sid, uid, dec]):
+                return {"status_code": 400, "submission_id": None, "message": "Missing fields", "data": None}
+            if dec not in ["QUOTED", "DECLINED", "MISSING_INFO", "MANUAL_REVIEW"]:
+                return {"status_code": 400, "submission_id": None, "message": f"Invalid decision: {dec}", "data": None}
+            state = self.state_manager.get_state(sid)
             if not state:
-                return self._error_response(404, f"Submission {submission_id} not found")
-            
-            logger.info(f"Applying override to {submission_id}: {state.decision} -> {override_decision}")
-            
-            # Apply override
-            self.state_manager.apply_override(
-                submission_id=submission_id,
-                user_id=user_id,
-                override_decision=override_decision,
-                override_reason=override_reason
-            )
-            
-            # Prepare response
-            summary = self.state_manager.get_submission_summary(submission_id)
-            
+                return {"status_code": 404, "submission_id": None, "message": "Not found", "data": None}
+            self.state_manager.apply_override(sid, uid, dec, reason)
             return {
                 "status_code": 200,
-                "submission_id": submission_id,
-                "message": f"Override applied successfully",
-                "data": summary
+                "submission_id": sid,
+                "message": "Override applied",
+                "data": self.state_manager.get_submission_summary(sid),
             }
-        
-        except ValueError as e:
-            logger.error(f"Validation error: {e}")
-            return self._error_response(400, str(e))
         except Exception as e:
-            logger.exception("Unexpected error in override handler")
-            return self._error_response(500, f"Internal server error: {str(e)}")
-    
-    def _error_response(self, status_code: int, message: str) -> Dict[str, Any]:
-        """Generate error response"""
-        return {
-            "status_code": status_code,
-            "submission_id": None,
-            "message": message,
-            "data": None
-        }
+            return {"status_code": 500, "submission_id": None, "message": str(e), "data": None}
 
 
 class QueryHandler:
-    """Handles status queries"""
-    
+    """Handles status queries (Lambda-style)."""
+
     def __init__(self):
         self.state_manager = get_state_manager()
-    
+
     def handle_status_query(self, event: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Query submission status.
-        
-        Expected event structure:
-        {
-            "submission_id": "..."  (optional; if not provided, return all)
-        }
-        """
         try:
-            submission_id = event.get("submission_id")
-            
-            if submission_id:
-                # Get single submission
-                summary = self.state_manager.get_submission_summary(submission_id)
+            sid = event.get("submission_id")
+            if sid:
+                summary = self.state_manager.get_submission_summary(sid)
                 if "error" in summary:
-                    return {
-                        "status_code": 404,
-                        "message": f"Submission {submission_id} not found",
-                        "data": None
-                    }
-                return {
-                    "status_code": 200,
-                    "message": "Submission found",
-                    "data": summary
-                }
-            else:
-                # Get all submissions
-                summaries = self.state_manager.list_submissions()
-                return {
-                    "status_code": 200,
-                    "message": f"Found {len(summaries)} submissions",
-                    "data": {
-                        "total": len(summaries),
-                        "submissions": summaries
-                    }
-                }
-        
+                    return {"status_code": 404, "message": "Not found", "data": None}
+                return {"status_code": 200, "message": "Found", "data": summary}
+            subs = self.state_manager.list_submissions()
+            return {"status_code": 200, "message": f"Found {len(subs)}", "data": {"total": len(subs), "submissions": subs}}
         except Exception as e:
-            logger.exception("Unexpected error in query handler")
-            return {
-                "status_code": 500,
-                "message": f"Internal server error: {str(e)}",
-                "data": None
-            }
-
-
-# FILE: lambda/submission_handler.py
-"""
-Lambda handler for submission processing.
-Entry point for AWS Lambda invocation.
-"""
-
-import json
-import logging
-from src.api.handlers import SubmissionHandler
-
-# Initialize logger
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Initialize handler
-handler = SubmissionHandler()
-
-
-def lambda_handler(event, context):
-    """
-    AWS Lambda handler for submission requests.
-    
-    Event source: API Gateway or direct invocation
-    
-    Args:
-        event: Lambda event object
-        context: Lambda context object
-    
-    Returns:
-        API Gateway formatted response
-    """
-    logger.info(f"Received event: {json.dumps(event)}")
-    
-    # Parse body if coming from API Gateway
-    if "body" in event:
-        try:
-            body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
-        except json.JSONDecodeError:
-            return format_response(400, {"error": "Invalid JSON body"})
-    else:
-        body = event
-    
-    # Process submission
-    result = handler.handle_submission(body)
-    
-    # Format response for API Gateway
-    return format_response(result.pop("status_code"), result)
-
-
-def format_response(status_code: int, body: dict) -> dict:
-    """Format response for API Gateway"""
-    return {
-        "statusCode": status_code,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*"
-        },
-        "body": json.dumps(body)
-    }
-
-
-# FILE: lambda/override_handler.py
-"""
-Lambda handler for override requests.
-"""
-
-import json
-import logging
-from src.api.handlers import OverrideHandler
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-handler = OverrideHandler()
-
-
-def lambda_handler(event, context):
-    """AWS Lambda handler for override requests"""
-    logger.info(f"Received override event: {json.dumps(event)}")
-    
-    if "body" in event:
-        try:
-            body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
-        except json.JSONDecodeError:
-            return format_response(400, {"error": "Invalid JSON body"})
-    else:
-        body = event
-    
-    result = handler.handle_override(body)
-    return format_response(result.pop("status_code"), result)
-
-
-def format_response(status_code: int, body: dict) -> dict:
-    """Format response for API Gateway"""
-    return {
-        "statusCode": status_code,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*"
-        },
-        "body": json.dumps(body)
-    }
-
-
-# FILE: lambda/query_handler.py
-"""
-Lambda handler for status queries.
-"""
-
-import json
-import logging
-from src.api.handlers import QueryHandler
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-handler = QueryHandler()
-
-
-def lambda_handler(event, context):
-    """AWS Lambda handler for status queries"""
-    logger.info(f"Received query event: {json.dumps(event)}")
-    
-    if "body" in event:
-        try:
-            body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
-        except json.JSONDecodeError:
-            return format_response(400, {"error": "Invalid JSON body"})
-    else:
-        body = event
-    
-    result = handler.handle_status_query(body)
-    return format_response(result.pop("status_code"), result)
-
-
-def format_response(status_code: int, body: dict) -> dict:
-    """Format response for API Gateway"""
-    return {
-        "statusCode": status_code,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*"
-        },
-        "body": json.dumps(body)
-    }
+            return {"status_code": 500, "message": str(e), "data": None}

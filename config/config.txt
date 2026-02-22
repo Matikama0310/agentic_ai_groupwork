@@ -1,500 +1,110 @@
-# FILE: requirements.txt
-"""
-Python dependencies for agentic underwriting system.
-"""
+# ============================================================================
+# CONFIGURATION REFERENCE
+# NorthStar Agentic Underwriting System
+# ============================================================================
+# This file contains reference configurations for the project.
+# The actual files are maintained in the project root.
+# ============================================================================
 
-# Core LLM / Agent Framework
-langgraph>=0.1.0
+# ---------------------------------------------------------------------------
+# FILE: .env.example
+# ---------------------------------------------------------------------------
+# Copy to .env and fill in real values.
+# MVP works without any changes (uses mock data).
+
+# --- LLM Provider ---
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+OPENAI_API_KEY=sk-your-key-here
+
+# --- AWS ---
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+AWS_REGION=us-east-1
+
+# --- Application Settings ---
+MOCK_EXTERNAL_APIS=true
+STATE_BACKEND=memory
+LOG_LEVEL=INFO
+
+# --- Third-Party APIs (Production) ---
+DNB_API_KEY=your-dnb-key
+HAZARDHUB_API_KEY=your-hazardhub-key
+
+# --- Communication (Production) ---
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+
+# ---------------------------------------------------------------------------
+# FILE: requirements.txt
+# ---------------------------------------------------------------------------
+# Core framework
+langgraph>=0.2.0
+langchain-core>=0.3.0
 anthropic>=0.7.0
 
-# Web Framework
+# Web framework
 fastapi>=0.100.0
 uvicorn>=0.23.0
 pydantic>=2.0.0
 
-# AWS Integration
+# UI
+streamlit>=1.30.0
+
+# AWS
 boto3>=1.26.0
-botocore>=1.29.0
 
 # Utilities
 python-dotenv>=1.0.0
 structlog>=22.0.0
-tenacity>=8.0.0  # Retry logic
+tenacity>=8.0.0
 
 # Testing
 pytest>=7.0.0
 pytest-cov>=4.0.0
-pytest-asyncio>=0.20.0
-pytest-mock>=3.10.0
-pytest-xdist>=3.0.0  # Parallel testing
 
-# Code Quality
-pylint>=2.17.0
-black>=23.0.0
-isort>=5.12.0
+# ---------------------------------------------------------------------------
+# UNDERWRITING GUIDELINES (Hard Rules)
+# ---------------------------------------------------------------------------
+# These rules are enforced in src/tools/decision_logic.py
 
-# Documentation
-sphinx>=5.0.0
-sphinx-rtd-theme>=1.2.0
+Rule R001: Minimum Credit Score >= 500
+Rule R002: Maximum Loss Ratio < 80%
+Rule R003: Debt to Equity Ratio < 3.0
+Rule R004: Minimum Years in Business >= 2
 
+Required Documents:
+  - application_form
+  - financial_statements
+  - loss_history
 
-# FILE: Makefile
-"""
-Build and deployment automation.
-"""
+# ---------------------------------------------------------------------------
+# WORKFLOW PHASES
+# ---------------------------------------------------------------------------
+# Phase 1: Ingestion & Triage
+#   START -> ingest_and_classify -> check_data_completeness
+#     -> [is_data_complete?]
+#         missing_docs -> draft_missing_info -> END
+#         data_complete -> Phase 2
+#
+# Phase 2: Qualification
+#   -> enrichment -> check_knockout_rules
+#     -> [knockout_check?]
+#         fail -> draft_decline -> END
+#         pass -> risk_assessment -> Phase 3
+#
+# Phase 3: The Workbench
+#   -> human_checkpoint
+#     -> [human_decision?]
+#         approve -> generate_quote -> END
+#         decline -> draft_decline -> END
+#         modify  -> update_state -> risk_assessment (loop back)
 
-.PHONY: help test test-unit test-integration test-coverage deploy logs clean lint format
-
-help:
-	@echo "Agentic Underwriting System - Available Commands"
-	@echo "=================================================="
-	@echo ""
-	@echo "Testing:"
-	@echo "  make test                 - Run all tests"
-	@echo "  make test-unit            - Run unit tests only"
-	@echo "  make test-integration     - Run integration tests"
-	@echo "  make test-coverage        - Run tests with coverage report"
-	@echo ""
-	@echo "Code Quality:"
-	@echo "  make lint                 - Lint code with pylint"
-	@echo "  make format               - Format code with black/isort"
-	@echo ""
-	@echo "Deployment:"
-	@echo "  make deploy ENV=dev       - Deploy to DEV environment"
-	@echo "  make deploy ENV=prod      - Deploy to PROD environment"
-	@echo "  make logs ENV=dev         - Tail logs from AWS"
-	@echo ""
-	@echo "Utilities:"
-	@echo "  make clean                - Remove build artifacts"
-	@echo "  make docs                 - Generate documentation"
-	@echo ""
-
-install:
-	pip install -r requirements.txt
-
-test:
-	pytest tests/ -v --tb=short
-
-test-unit:
-	pytest tests/unit/ -v
-
-test-integration:
-	pytest tests/integration/ -v
-
-test-performance:
-	pytest tests/performance/ -v
-
-test-coverage:
-	pytest tests/ --cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=80
-	@echo "Coverage report generated: htmlcov/index.html"
-
-lint:
-	pylint src/ lambda/ --disable=C0114,C0115,C0116
-
-format:
-	black src/ tests/ lambda/
-	isort src/ tests/ lambda/
-
-clean:
-	find . -type d -name __pycache__ -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
-	rm -rf .pytest_cache .coverage htmlcov/ dist/ build/
-
-docs:
-	cd docs && sphinx-build -b html . _build/html
-
-deploy:
-	@if [ -z "$(ENV)" ]; then echo "Usage: make deploy ENV=dev|prod"; exit 1; fi
-	sam build
-	sam deploy --stack-name agentic-underwriting-$(ENV) --parameter-overrides Environment=$(ENV)
-	@echo "Deployment to $(ENV) complete"
-
-logs:
-	@if [ -z "$(ENV)" ]; then echo "Usage: make logs ENV=dev|prod"; exit 1; fi
-	aws logs tail /aws/lambda/submission-handler-$(ENV) --follow
-
-local-server:
-	uvicorn src.api.main:app --reload --port 8000
-
-# FILE: .env.example
-# Copy this to .env and fill in real values
-
-# Anthropic API Key (required for MVP)
-ANTHROPIC_API_KEY=sk-your-key-here
-
-# AWS Configuration
-AWS_REGION=us-east-1
-AWS_PROFILE=default
-
-# MVP Settings
-MOCK_EXTERNAL_APIS=true  # Use mock APIs for testing
-STATE_BACKEND=memory      # 'memory' (MVP) or 'dynamodb' (production)
-
-# Logging
-LOG_LEVEL=INFO
-LOG_FORMAT=json  # 'json' or 'text'
-
-# Service Configuration
-SUBMISSION_TIMEOUT_SECONDS=30
-EXTRACTION_CONFIDENCE_THRESHOLD=0.50
-
-# AWS Secrets Manager (if enabled)
-AWS_SECRETS_MANAGER_ENABLED=false
-SECRETS_MANAGER_REGION=us-east-1
-
-# Feature Flags
-FEATURE_PARALLEL_ENRICHMENT=true
-FEATURE_AUTO_SEND_EMAILS=false  # Require human review in MVP
-FEATURE_GENERATE_PDF=false      # Use placeholder URLs in MVP
-
-# END
-
-
-# FILE: pyproject.toml
-"""
-Project configuration for packaging and tools.
-"""
-
-[build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
-build-backend = "setuptools.build_meta"
-
-[project]
-name = "agentic-underwriting-system"
-version = "1.0.0-mvp"
-description = "Agentic AI system for insurance underwriting using LanGraph"
-authors = [
-    {name = "Engineering Team", email = "engineering@insurancecompany.com"}
-]
-requires-python = ">=3.12"
-dependencies = [
-    "langgraph>=0.1.0",
-    "anthropic>=0.7.0",
-    "fastapi>=0.100.0",
-    "uvicorn>=0.23.0",
-    "pydantic>=2.0.0",
-    "boto3>=1.26.0",
-    "python-dotenv>=1.0.0",
-    "structlog>=22.0.0",
-    "tenacity>=8.0.0",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
-    "pytest-asyncio>=0.20.0",
-    "pytest-mock>=3.10.0",
-    "pylint>=2.17.0",
-    "black>=23.0.0",
-    "isort>=5.12.0",
-]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = "test_*.py"
-python_classes = "Test*"
-python_functions = "test_*"
-addopts = "-v --tb=short"
-
-[tool.coverage.run]
-source = ["src"]
-omit = [
-    "src/integrations/*",
-    "tests/*"
-]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if __name__ == .__main__.:",
-]
-
-[tool.black]
-line-length = 100
-target-version = ['py312']
-include = '\.pyi?$'
-exclude = '''
-/(
-    \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | _build
-  | buck-out
-  | build
-  | dist
-)/
-'''
-
-[tool.isort]
-profile = "black"
-multi_line_mode = 3
-include_trailing_comma = true
-force_grid_wrap = 0
-use_parentheses = true
-ensure_newline_before_comments = true
-line_length = 100
-
-# FILE: .gitignore
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual environments
-venv/
-env/
-ENV/
-.venv
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-
-# Environment variables
-.env
-.env.local
-.env.*.local
-
-# AWS
-.aws/
-*.sam
-sam-tests/
-packaged.yaml
-.aws-sam/
-
-# Logs
-*.log
-logs/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Project specific
-temp/
-fixtures/generated/
-credentials.json
-
-# FILE: infrastructure/sam_template.yaml
-"""
-AWS SAM (Serverless Application Model) template for deployment.
-"""
-
-AWSTemplateFormatVersion: '2010-09-09'
-Transform: AWS::Serverless-2016-10-31
-
-Description: 'Agentic Underwriting System - Lambda + API Gateway'
-
-Parameters:
-  Environment:
-    Type: String
-    Default: dev
-    AllowedValues:
-      - dev
-      - staging
-      - prod
-    Description: Environment name
-  
-  ANTHROPICAPIKey:
-    Type: String
-    NoEcho: true
-    Description: Anthropic API key
-  
-  LogLevel:
-    Type: String
-    Default: INFO
-    AllowedValues:
-      - DEBUG
-      - INFO
-      - WARNING
-      - ERROR
-
-Globals:
-  Function:
-    Timeout: 60
-    MemorySize: 512
-    Runtime: python3.12
-    Environment:
-      Variables:
-        ENVIRONMENT: !Ref Environment
-        LOG_LEVEL: !Ref LogLevel
-        ANTHROPIC_API_KEY: !Ref ANTHROPICAPIKey
-        MOCK_EXTERNAL_APIS: 'true'
-
-Resources:
-  # ===== Lambda Functions =====
-  
-  SubmissionHandlerFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub 'submission-handler-${Environment}'
-      CodeUri: .
-      Handler: lambda.submission_handler.lambda_handler
-      Description: Process new underwriting submissions
-      Policies:
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action:
-                - logs:CreateLogGroup
-                - logs:CreateLogStream
-                - logs:PutLogEvents
-              Resource: arn:aws:logs:*:*:*
-            - Effect: Allow
-              Action:
-                - s3:GetObject
-                - s3:PutObject
-              Resource: !Sub 'arn:aws:s3:::quotes-${Environment}-*/*'
-      Events:
-        ApiEvent:
-          Type: Api
-          Properties:
-            RestApiId: !Ref SubmissionApi
-            Path: /submit
-            Method: POST
-      Tags:
-        Environment: !Ref Environment
-        Application: agentic-underwriting
-
-  OverrideHandlerFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub 'override-handler-${Environment}'
-      CodeUri: .
-      Handler: lambda.override_handler.lambda_handler
-      Description: Handle human overrides to AI decisions
-      Policies:
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action:
-                - logs:CreateLogGroup
-                - logs:CreateLogStream
-                - logs:PutLogEvents
-              Resource: arn:aws:logs:*:*:*
-      Events:
-        ApiEvent:
-          Type: Api
-          Properties:
-            RestApiId: !Ref SubmissionApi
-            Path: /override
-            Method: POST
-      Tags:
-        Environment: !Ref Environment
-        Application: agentic-underwriting
-
-  QueryHandlerFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub 'query-handler-${Environment}'
-      CodeUri: .
-      Handler: lambda.query_handler.lambda_handler
-      Description: Query submission status
-      Policies:
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action:
-                - logs:CreateLogGroup
-                - logs:CreateLogStream
-                - logs:PutLogEvents
-              Resource: arn:aws:logs:*:*:*
-      Events:
-        ApiEvent:
-          Type: Api
-          Properties:
-            RestApiId: !Ref SubmissionApi
-            Path: /status
-            Method: GET
-      Tags:
-        Environment: !Ref Environment
-        Application: agentic-underwriting
-
-  # ===== API Gateway =====
-  
-  SubmissionApi:
-    Type: AWS::Serverless::Api
-    Properties:
-      Name: !Sub 'agentic-underwriting-api-${Environment}'
-      StageName: !Ref Environment
-      TracingEnabled: true
-      MethodSettings:
-        - ResourcePath: '/*'
-          HttpMethod: '*'
-          LoggingLevel: INFO
-          DataTraceEnabled: false
-          MetricsEnabled: true
-
-  # ===== CloudWatch Logs =====
-  
-  SubmissionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/submission-handler-${Environment}'
-      RetentionInDays: 30
-
-  OverrideLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/override-handler-${Environment}'
-      RetentionInDays: 30
-
-  QueryLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/query-handler-${Environment}'
-      RetentionInDays: 30
-
-Outputs:
-  SubmissionApiEndpoint:
-    Description: API Gateway endpoint for submissions
-    Value: !Sub 'https://${SubmissionApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/submit'
-  
-  OverrideApiEndpoint:
-    Description: API Gateway endpoint for overrides
-    Value: !Sub 'https://${SubmissionApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/override'
-  
-  StatusApiEndpoint:
-    Description: API Gateway endpoint for status queries
-    Value: !Sub 'https://${SubmissionApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/status'
-  
-  SubmissionFunctionArn:
-    Description: ARN of submission handler function
-    Value: !GetAtt SubmissionHandlerFunction.Arn
-  
-  OverrideFunctionArn:
-    Description: ARN of override handler function
-    Value: !GetAtt OverrideHandlerFunction.Arn
+# ---------------------------------------------------------------------------
+# DECISION OUTCOMES
+# ---------------------------------------------------------------------------
+# QUOTED       - All rules pass, risk assessed, quote generated
+# DECLINED     - Hard rule failure, decline letter with citations
+# MISSING_INFO - Critical documents absent, request email sent
+# MANUAL_REVIEW - Human modifies, loops back for re-assessment

@@ -1,15 +1,31 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: 'Agentic Underwriting System'
+
+Description: 'NorthStar Agentic Underwriting System - Lambda + API Gateway'
 
 Parameters:
   Environment:
     Type: String
     Default: dev
-    AllowedValues: [dev, staging, prod]
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name
+
   ANTHROPICAPIKey:
     Type: String
     NoEcho: true
+    Description: Anthropic API key
+
+  LogLevel:
+    Type: String
+    Default: INFO
+    AllowedValues:
+      - DEBUG
+      - INFO
+      - WARNING
+      - ERROR
 
 Globals:
   Function:
@@ -19,30 +35,162 @@ Globals:
     Environment:
       Variables:
         ENVIRONMENT: !Ref Environment
+        LOG_LEVEL: !Ref LogLevel
         ANTHROPIC_API_KEY: !Ref ANTHROPICAPIKey
         MOCK_EXTERNAL_APIS: 'true'
+        STATE_BACKEND: 'memory'
 
 Resources:
+  # ===== Lambda Functions =====
+
   SubmissionHandlerFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub 'submission-handler-${Environment}'
       CodeUri: .
       Handler: lambda.submission_handler.lambda_handler
+      Description: Process new underwriting submissions
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: arn:aws:logs:*:*:*
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: !Sub 'arn:aws:s3:::quotes-${Environment}-*/*'
       Events:
         ApiEvent:
           Type: Api
           Properties:
-            RestApiId: !Ref SubmissionApi
+            RestApiId: !Ref UnderwritingApi
             Path: /submit
             Method: POST
+      Tags:
+        Environment: !Ref Environment
+        Application: agentic-underwriting
 
-  SubmissionApi:
+  OverrideHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'override-handler-${Environment}'
+      CodeUri: .
+      Handler: lambda.override_handler.lambda_handler
+      Description: Handle human overrides to AI decisions
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: arn:aws:logs:*:*:*
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref UnderwritingApi
+            Path: /override
+            Method: POST
+      Tags:
+        Environment: !Ref Environment
+        Application: agentic-underwriting
+
+  QueryHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'query-handler-${Environment}'
+      CodeUri: .
+      Handler: lambda.query_handler.lambda_handler
+      Description: Query submission status
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: arn:aws:logs:*:*:*
+      Events:
+        GetById:
+          Type: Api
+          Properties:
+            RestApiId: !Ref UnderwritingApi
+            Path: /status/{submission_id}
+            Method: GET
+        ListAll:
+          Type: Api
+          Properties:
+            RestApiId: !Ref UnderwritingApi
+            Path: /status
+            Method: GET
+      Tags:
+        Environment: !Ref Environment
+        Application: agentic-underwriting
+
+  # ===== API Gateway =====
+
+  UnderwritingApi:
     Type: AWS::Serverless::Api
     Properties:
       Name: !Sub 'agentic-underwriting-api-${Environment}'
       StageName: !Ref Environment
+      TracingEnabled: true
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          LoggingLevel: INFO
+          DataTraceEnabled: false
+          MetricsEnabled: true
+
+  # ===== CloudWatch Logs =====
+
+  SubmissionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/submission-handler-${Environment}'
+      RetentionInDays: 30
+
+  OverrideLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/override-handler-${Environment}'
+      RetentionInDays: 30
+
+  QueryLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/query-handler-${Environment}'
+      RetentionInDays: 30
 
 Outputs:
   SubmissionApiEndpoint:
-    Value: !Sub 'https://${SubmissionApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/submit'
+    Description: API Gateway endpoint for submissions
+    Value: !Sub 'https://${UnderwritingApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/submit'
+
+  OverrideApiEndpoint:
+    Description: API Gateway endpoint for overrides
+    Value: !Sub 'https://${UnderwritingApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/override'
+
+  StatusApiEndpoint:
+    Description: API Gateway endpoint for status queries
+    Value: !Sub 'https://${UnderwritingApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/status'
+
+  SubmissionFunctionArn:
+    Description: ARN of submission handler function
+    Value: !GetAtt SubmissionHandlerFunction.Arn
+
+  OverrideFunctionArn:
+    Description: ARN of override handler function
+    Value: !GetAtt OverrideHandlerFunction.Arn
+
+  QueryFunctionArn:
+    Description: ARN of query handler function
+    Value: !GetAtt QueryHandlerFunction.Arn

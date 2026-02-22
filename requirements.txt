@@ -1,11 +1,15 @@
 # Core LLM / Agent Framework
-langgraph>=0.1.0
+langgraph>=0.2.0
+langchain-core>=0.3.0
 anthropic>=0.7.0
 
 # Web Framework
 fastapi>=0.100.0
 uvicorn>=0.23.0
 pydantic>=2.0.0
+
+# Streamlit (Human-in-the-Loop Workbench)
+streamlit>=1.30.0
 
 # AWS Integration
 boto3>=1.26.0
@@ -21,4 +25,3 @@ pytest>=7.0.0
 pytest-cov>=4.0.0
 pytest-asyncio>=0.20.0
 pytest-mock>=3.10.0
-pytest-xdist>=3.0.0
