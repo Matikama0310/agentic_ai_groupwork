@@ -1,0 +1,48 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'Agentic Underwriting System'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+  ANTHROPICAPIKey:
+    Type: String
+    NoEcho: true
+
+Globals:
+  Function:
+    Timeout: 60
+    MemorySize: 512
+    Runtime: python3.12
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        ANTHROPIC_API_KEY: !Ref ANTHROPICAPIKey
+        MOCK_EXTERNAL_APIS: 'true'
+
+Resources:
+  SubmissionHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'submission-handler-${Environment}'
+      CodeUri: .
+      Handler: lambda.submission_handler.lambda_handler
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SubmissionApi
+            Path: /submit
+            Method: POST
+
+  SubmissionApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub 'agentic-underwriting-api-${Environment}'
+      StageName: !Ref Environment
+
+Outputs:
+  SubmissionApiEndpoint:
+    Value: !Sub 'https://${SubmissionApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/submit'
