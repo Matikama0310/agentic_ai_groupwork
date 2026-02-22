@@ -6,7 +6,10 @@
       "Bash(dir:*)",
       "Bash(git status:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr create --title \"Add project summary document\" --body \"$\\(cat <<''EOF''\n## Summary\n- Added comprehensive `summary.md` covering the full project context: architecture, source code breakdown, API reference, testing, configuration, design decisions, and implementation status\n- Added Claude Code local settings\n\n## Test plan\n- [ ] Review summary.md for accuracy against existing project documentation\n- [ ] Verify no sensitive information is included\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\nEOF\n\\)\")",
+      "Bash(where:*)"
     ]
   }
 }
