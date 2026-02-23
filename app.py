@@ -6,6 +6,7 @@ Run: streamlit run app.py
 """
 
 import json
+import graphviz
 import streamlit as st
 from datetime import datetime
 
@@ -84,6 +85,119 @@ else:
     st.sidebar.info("No submissions yet. Submit one above.")
 
 # ---------------------------------------------------------------------------
+# Workflow diagram builder
+# ---------------------------------------------------------------------------
+# Ordered list of nodes a submission passes through on the "happy path"
+_NODE_ORDER = [
+    "ingest_and_classify",
+    "check_data_completeness",
+    "enrichment",
+    "check_knockout_rules",
+    "risk_assessment",
+    "human_checkpoint",
+    "generate_quote",
+]
+
+# Map (status, decision) → currently-active node id
+_STATUS_TO_NODE = {
+    "INGESTION": "ingest_and_classify",
+    "EXTRACTION": "check_data_completeness",
+    "ENRICHMENT": "enrichment",
+    "ANALYSIS": "risk_assessment",
+    "DECISION": "human_checkpoint",
+}
+
+_COMPLETED_NODE = {
+    "MISSING_INFO": "draft_missing_info",
+    "DECLINED": "draft_decline",
+    "QUOTED": "generate_quote",
+}
+
+
+def render_workflow_diagram(current_status: str = "", current_decision: str = "") -> graphviz.Digraph:
+    """Build a Graphviz Digraph of the underwriting workflow with dynamic highlighting."""
+
+    # Determine active node
+    if current_status == "COMPLETED":
+        active_node = _COMPLETED_NODE.get(current_decision)
+    else:
+        active_node = _STATUS_TO_NODE.get(current_status)
+
+    # Determine completed nodes (all nodes before the active one on the happy path)
+    completed_nodes: set = set()
+    if active_node and active_node in _NODE_ORDER:
+        idx = _NODE_ORDER.index(active_node)
+        completed_nodes = set(_NODE_ORDER[:idx])
+    elif active_node == "draft_missing_info":
+        completed_nodes = {"ingest_and_classify", "check_data_completeness"}
+    elif active_node == "draft_decline":
+        completed_nodes = {"ingest_and_classify", "check_data_completeness", "enrichment", "check_knockout_rules"}
+
+    def _style(node_id: str) -> dict:
+        if node_id == active_node:
+            return {"fillcolor": "#FF8C00", "fontcolor": "white", "penwidth": "3", "style": "filled,bold"}
+        if node_id in completed_nodes:
+            return {"fillcolor": "#90EE90", "style": "filled"}
+        return {"fillcolor": "white", "style": "filled"}
+
+    g = graphviz.Digraph("workflow", format="svg")
+    g.attr(rankdir="TB", bgcolor="transparent", fontname="Helvetica", nodesep="0.6", ranksep="0.8")
+    g.attr("node", shape="box", style="filled,rounded", fillcolor="white", fontname="Helvetica", fontsize="11")
+    g.attr("edge", fontname="Helvetica", fontsize="9")
+
+    # START / END
+    g.node("START", "START", shape="circle", width="0.5", fillcolor="#4A90D9", fontcolor="white", style="filled")
+    g.node("END", "END", shape="doublecircle", width="0.5", fillcolor="#4A90D9", fontcolor="white", style="filled")
+
+    # --- Phase 1: Ingestion & Triage ---
+    with g.subgraph(name="cluster_phase1") as p1:
+        p1.attr(label="Phase 1: Ingestion & Triage", style="dashed", color="#4A90D9", fontcolor="#4A90D9")
+        p1.node("ingest_and_classify", "Ingest & Classify\n(Classification Agent)", **_style("ingest_and_classify"))
+        p1.node("check_data_completeness", "Check Data\nCompleteness\n(Gap Analysis Agent)", **_style("check_data_completeness"))
+        p1.node("is_data_complete", "Data\nComplete?", shape="diamond", fillcolor="#FFF3CD", style="filled", width="1.4", height="0.9")
+        p1.node("draft_missing_info", "Draft Missing\nInfo Email\n(Broker Liaison)", **_style("draft_missing_info"))
+
+    # --- Phase 2: Qualification ---
+    with g.subgraph(name="cluster_phase2") as p2:
+        p2.attr(label="Phase 2: Qualification", style="dashed", color="#28A745", fontcolor="#28A745")
+        p2.node("enrichment", "Enrichment\n(3x Data Retrievers)", **_style("enrichment"))
+        p2.node("check_knockout_rules", "Check Knockout\nRules\n(Gap Analysis Agent)", **_style("check_knockout_rules"))
+        p2.node("knockout_check", "Knockout\nRules?", shape="diamond", fillcolor="#FFF3CD", style="filled", width="1.4", height="0.9")
+        p2.node("risk_assessment", "Risk Assessment\n(Analyst Agent)", **_style("risk_assessment"))
+
+    # --- Phase 3: The Workbench ---
+    with g.subgraph(name="cluster_phase3") as p3:
+        p3.attr(label="Phase 3: The Workbench (Human-in-the-Loop)", style="dashed", color="#DC3545", fontcolor="#DC3545")
+        p3.node("human_checkpoint", "Human\nCheckpoint", **_style("human_checkpoint"))
+        p3.node("human_decision", "Human\nDecision?", shape="diamond", fillcolor="#FFF3CD", style="filled", width="1.4", height="0.9")
+        p3.node("generate_quote", "Generate Quote\n(Broker Liaison)", **_style("generate_quote"))
+        p3.node("draft_decline", "Draft Decline\n(Broker Liaison)", **_style("draft_decline"))
+        p3.node("update_state", "Update State\n(Human Override)", **_style("update_state"))
+
+    # --- Edges ---
+    g.edge("START", "ingest_and_classify")
+    g.edge("ingest_and_classify", "check_data_completeness")
+    g.edge("check_data_completeness", "is_data_complete")
+    g.edge("is_data_complete", "draft_missing_info", label="missing_docs", color="#DC3545", fontcolor="#DC3545")
+    g.edge("is_data_complete", "enrichment", label="data_complete", color="#28A745", fontcolor="#28A745")
+    g.edge("draft_missing_info", "END")
+    g.edge("enrichment", "check_knockout_rules")
+    g.edge("check_knockout_rules", "knockout_check")
+    g.edge("knockout_check", "draft_decline", label="fail", color="#DC3545", fontcolor="#DC3545")
+    g.edge("knockout_check", "risk_assessment", label="pass", color="#28A745", fontcolor="#28A745")
+    g.edge("risk_assessment", "human_checkpoint")
+    g.edge("human_checkpoint", "human_decision")
+    g.edge("human_decision", "generate_quote", label="approve", color="#28A745", fontcolor="#28A745")
+    g.edge("human_decision", "draft_decline", label="decline", color="#DC3545", fontcolor="#DC3545")
+    g.edge("human_decision", "update_state", label="modify", color="#FF8C00", fontcolor="#FF8C00")
+    g.edge("update_state", "risk_assessment", style="dashed", label="loop back", color="#FF8C00", fontcolor="#FF8C00")
+    g.edge("generate_quote", "END")
+    g.edge("draft_decline", "END")
+
+    return g
+
+
+# ---------------------------------------------------------------------------
 # Main content
 # ---------------------------------------------------------------------------
 st.title("Underwriting Workbench")
@@ -123,8 +237,8 @@ st.divider()
 # ---------------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------------
-tab_overview, tab_data, tab_risk, tab_email, tab_audit, tab_override = st.tabs(
-    ["Overview", "Extracted Data", "Risk Assessment", "Drafted Email", "Audit Trail", "Human Override"]
+tab_overview, tab_workflow, tab_data, tab_risk, tab_email, tab_audit, tab_override = st.tabs(
+    ["Overview", "Workflow", "Extracted Data", "Risk Assessment", "Drafted Email", "Audit Trail", "Human Override"]
 )
 
 # --- Tab 1: Overview ---
@@ -167,7 +281,20 @@ with tab_overview:
     elif vr.get("passes_guidelines"):
         st.success("All underwriting guidelines passed.")
 
-# --- Tab 2: Extracted Data ---
+# --- Tab 2: Workflow Diagram ---
+with tab_workflow:
+    st.subheader("Agent Workflow Diagram")
+    diagram = render_workflow_diagram(state.status, state.decision)
+    st.graphviz_chart(diagram, use_container_width=True)
+
+    # Legend
+    lc1, lc2, lc3, lc4 = st.columns(4)
+    lc1.markdown(":orange_square: **Current Step**")
+    lc2.markdown(":green_square: **Completed**")
+    lc3.markdown(":white_large_square: **Pending**")
+    lc4.markdown(":yellow_square: **Decision Point**")
+
+# --- Tab 3: Extracted Data ---
 with tab_data:
     st.subheader("Extracted Data (OCR + Schema Mapping)")
     st.write(f"**Extraction Confidence:** {state.extraction_confidence or 'N/A'}")
