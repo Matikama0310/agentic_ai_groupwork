@@ -115,15 +115,36 @@ _COMPLETED_NODE = {
 
 
 def render_workflow_diagram(current_status: str = "", current_decision: str = "") -> graphviz.Digraph:
-    """Build a Graphviz Digraph of the underwriting workflow with dynamic highlighting."""
+    """Build an enhanced Graphviz Digraph of the underwriting workflow with dynamic highlighting."""
 
-    # Determine active node
+    # ── Agent colour palette ────────────────────────────────────
+    # Each agent gets a distinct base colour used for its nodes
+    AGENT_COLORS = {
+        "classification":  {"fill": "#E8F0FE", "border": "#4285F4", "font": "#1A3B6B"},  # blue
+        "data_retrieval":  {"fill": "#E6F4EA", "border": "#34A853", "font": "#1B5E20"},  # green
+        "analyst":         {"fill": "#FEF7E0", "border": "#F9AB00", "font": "#7A5800"},  # amber
+        "broker_liaison":  {"fill": "#FCE8E6", "border": "#EA4335", "font": "#8B1A1A"},  # red
+        "supervisor":      {"fill": "#F3E8FD", "border": "#A142F4", "font": "#4A148C"},  # purple
+        "human":           {"fill": "#F3E8FD", "border": "#A142F4", "font": "#4A148C"},  # purple (same)
+    }
+    DECISION_FILL   = "#FFF8E1"   # pale amber for diamond decision nodes
+    DECISION_BORDER = "#FFB300"
+    ACTIVE_FILL     = "#FF6D00"   # vivid orange for current step
+    ACTIVE_BORDER   = "#BF360C"
+    COMPLETED_FILL  = "#C8E6C9"   # soft green for completed
+    COMPLETED_BORDER= "#388E3C"
+    TERMINAL_FILL   = "#1B1F3B"   # dark navy for START / END
+    EDGE_DEFAULT    = "#90A4AE"   # muted grey for normal edges
+    EDGE_PASS       = "#2E7D32"   # green
+    EDGE_FAIL       = "#C62828"   # red
+    EDGE_MODIFY     = "#E65100"   # deep orange
+
+    # ── Determine active / completed nodes ──────────────────────
     if current_status == "COMPLETED":
         active_node = _COMPLETED_NODE.get(current_decision)
     else:
         active_node = _STATUS_TO_NODE.get(current_status)
 
-    # Determine completed nodes (all nodes before the active one on the happy path)
     completed_nodes: set = set()
     if active_node and active_node in _NODE_ORDER:
         idx = _NODE_ORDER.index(active_node)
@@ -133,66 +154,229 @@ def render_workflow_diagram(current_status: str = "", current_decision: str = ""
     elif active_node == "draft_decline":
         completed_nodes = {"ingest_and_classify", "check_data_completeness", "enrichment", "check_knockout_rules"}
 
-    def _style(node_id: str) -> dict:
-        if node_id == active_node:
-            return {"fillcolor": "#FF8C00", "fontcolor": "white", "penwidth": "3", "style": "filled,bold"}
+    # If the workflow finished, mark the final node as completed too
+    if current_status == "COMPLETED" and active_node:
+        completed_nodes.add(active_node)
+
+    def _node_style(node_id: str, agent_key: str) -> dict:
+        ac = AGENT_COLORS[agent_key]
+        if node_id == active_node and current_status != "COMPLETED":
+            return {
+                "fillcolor": ACTIVE_FILL,
+                "color": ACTIVE_BORDER,
+                "fontcolor": "white",
+                "penwidth": "3",
+                "style": "filled,bold,rounded",
+            }
         if node_id in completed_nodes:
-            return {"fillcolor": "#90EE90", "style": "filled"}
-        return {"fillcolor": "white", "style": "filled"}
+            return {
+                "fillcolor": COMPLETED_FILL,
+                "color": COMPLETED_BORDER,
+                "fontcolor": "#1B5E20",
+                "penwidth": "2",
+                "style": "filled,rounded",
+            }
+        return {
+            "fillcolor": ac["fill"],
+            "color": ac["border"],
+            "fontcolor": ac["font"],
+            "penwidth": "1.5",
+            "style": "filled,rounded",
+        }
 
+    def _decision_style() -> dict:
+        return {
+            "shape": "diamond",
+            "fillcolor": DECISION_FILL,
+            "color": DECISION_BORDER,
+            "fontcolor": "#5D4037",
+            "style": "filled",
+            "width": "1.6",
+            "height": "1.0",
+            "penwidth": "1.5",
+        }
+
+    # ── Build the graph ─────────────────────────────────────────
     g = graphviz.Digraph("workflow", format="svg")
-    g.attr(rankdir="TB", bgcolor="transparent", fontname="Helvetica", nodesep="0.6", ranksep="0.8")
-    g.attr("node", shape="box", style="filled,rounded", fillcolor="white", fontname="Helvetica", fontsize="11")
-    g.attr("edge", fontname="Helvetica", fontsize="9")
+    g.attr(
+        rankdir="TB",
+        bgcolor="white",
+        fontname="Helvetica Neue, Helvetica, Arial, sans-serif",
+        nodesep="0.7",
+        ranksep="1.0",
+        pad="0.5",
+        margin="0.3",
+        splines="ortho",
+    )
+    g.attr(
+        "node",
+        shape="box",
+        style="filled,rounded",
+        fillcolor="white",
+        fontname="Helvetica Neue, Helvetica, Arial, sans-serif",
+        fontsize="11",
+        margin="0.2,0.15",
+    )
+    g.attr(
+        "edge",
+        fontname="Helvetica Neue, Helvetica, Arial, sans-serif",
+        fontsize="9",
+        color=EDGE_DEFAULT,
+        arrowsize="0.8",
+        penwidth="1.5",
+    )
 
-    # START / END
-    g.node("START", "START", shape="circle", width="0.5", fillcolor="#4A90D9", fontcolor="white", style="filled")
-    g.node("END", "END", shape="doublecircle", width="0.5", fillcolor="#4A90D9", fontcolor="white", style="filled")
+    # START / END terminals
+    g.node(
+        "START", "▶  START",
+        shape="box", style="filled,rounded", width="1.2", height="0.4",
+        fillcolor=TERMINAL_FILL, fontcolor="white", color=TERMINAL_FILL,
+        fontsize="12", fontname="Helvetica Neue Bold",
+    )
+    g.node(
+        "END", "◼  END",
+        shape="box", style="filled,rounded", width="1.2", height="0.4",
+        fillcolor=TERMINAL_FILL, fontcolor="white", color=TERMINAL_FILL,
+        fontsize="12", fontname="Helvetica Neue Bold",
+    )
 
-    # --- Phase 1: Ingestion & Triage ---
+    # ── Phase 1: Ingestion & Triage ────────────────────────────
     with g.subgraph(name="cluster_phase1") as p1:
-        p1.attr(label="Phase 1: Ingestion & Triage", style="dashed", color="#4A90D9", fontcolor="#4A90D9")
-        p1.node("ingest_and_classify", "Ingest & Classify\n(Classification Agent)", **_style("ingest_and_classify"))
-        p1.node("check_data_completeness", "Check Data\nCompleteness\n(Underwriting Analyst)", **_style("check_data_completeness"))
-        p1.node("is_data_complete", "Data\nComplete?", shape="diamond", fillcolor="#FFF3CD", style="filled", width="1.4", height="0.9")
-        p1.node("draft_missing_info", "Draft Missing\nInfo Email\n(Broker Liaison)", **_style("draft_missing_info"))
+        p1.attr(
+            label="  PHASE 1  ·  Ingestion & Triage  ",
+            labeljust="l",
+            style="filled,rounded",
+            color="#4285F4",
+            fillcolor="#F8FAFF",
+            fontcolor="#4285F4",
+            fontsize="13",
+            fontname="Helvetica Neue Bold",
+            penwidth="2",
+            margin="18",
+        )
+        p1.node(
+            "ingest_and_classify",
+            "📄  Ingest & Classify\nClassification Agent",
+            **_node_style("ingest_and_classify", "classification"),
+        )
+        p1.node(
+            "check_data_completeness",
+            "🔍  Check Data Completeness\nUnderwriting Analyst",
+            **_node_style("check_data_completeness", "analyst"),
+        )
+        p1.node("is_data_complete", "Data\nComplete?", **_decision_style())
+        p1.node(
+            "draft_missing_info",
+            "✉️  Draft Missing Info Email\nBroker Liaison",
+            **_node_style("draft_missing_info", "broker_liaison"),
+        )
 
-    # --- Phase 2: Qualification ---
+    # ── Phase 2: Qualification ──────────────────────────────────
     with g.subgraph(name="cluster_phase2") as p2:
-        p2.attr(label="Phase 2: Qualification", style="dashed", color="#28A745", fontcolor="#28A745")
-        p2.node("enrichment", "Enrichment\n(Data Retrieval Agent)", **_style("enrichment"))
-        p2.node("check_knockout_rules", "Check Knockout\nRules\n(Underwriting Analyst)", **_style("check_knockout_rules"))
-        p2.node("knockout_check", "Knockout\nRules?", shape="diamond", fillcolor="#FFF3CD", style="filled", width="1.4", height="0.9")
-        p2.node("risk_assessment", "Risk Assessment\n(Underwriting Analyst)", **_style("risk_assessment"))
+        p2.attr(
+            label="  PHASE 2  ·  Qualification & Enrichment  ",
+            labeljust="l",
+            style="filled,rounded",
+            color="#34A853",
+            fillcolor="#F6FFF8",
+            fontcolor="#34A853",
+            fontsize="13",
+            fontname="Helvetica Neue Bold",
+            penwidth="2",
+            margin="18",
+        )
+        p2.node(
+            "enrichment",
+            "🔗  Enrichment  (3 sources)\nData Retrieval Agent",
+            **_node_style("enrichment", "data_retrieval"),
+        )
+        p2.node(
+            "check_knockout_rules",
+            "⚖️  Check Knockout Rules\nUnderwriting Analyst",
+            **_node_style("check_knockout_rules", "analyst"),
+        )
+        p2.node("knockout_check", "Knockout\nRules?", **_decision_style())
+        p2.node(
+            "risk_assessment",
+            "📊  Risk Assessment & Pricing\nUnderwriting Analyst",
+            **_node_style("risk_assessment", "analyst"),
+        )
 
-    # --- Phase 3: The Workbench ---
+    # ── Phase 3: The Workbench ──────────────────────────────────
     with g.subgraph(name="cluster_phase3") as p3:
-        p3.attr(label="Phase 3: The Workbench (Human-in-the-Loop)", style="dashed", color="#DC3545", fontcolor="#DC3545")
-        p3.node("human_checkpoint", "Human\nCheckpoint", **_style("human_checkpoint"))
-        p3.node("human_decision", "Human\nDecision?", shape="diamond", fillcolor="#FFF3CD", style="filled", width="1.4", height="0.9")
-        p3.node("generate_quote", "Generate Quote\n(Broker Liaison)", **_style("generate_quote"))
-        p3.node("draft_decline", "Draft Decline\n(Broker Liaison)", **_style("draft_decline"))
-        p3.node("update_state", "Update State\n(Human Override)", **_style("update_state"))
+        p3.attr(
+            label="  PHASE 3  ·  The Workbench  (Human-in-the-Loop)  ",
+            labeljust="l",
+            style="filled,rounded",
+            color="#A142F4",
+            fillcolor="#FBF6FF",
+            fontcolor="#A142F4",
+            fontsize="13",
+            fontname="Helvetica Neue Bold",
+            penwidth="2",
+            margin="18",
+        )
+        p3.node(
+            "human_checkpoint",
+            "🧑‍💼  Human Checkpoint\nSupervisor Agent",
+            **_node_style("human_checkpoint", "supervisor"),
+        )
+        p3.node("human_decision", "Human\nDecision?", **_decision_style())
+        p3.node(
+            "generate_quote",
+            "✅  Generate Quote Package\nBroker Liaison",
+            **_node_style("generate_quote", "broker_liaison"),
+        )
+        p3.node(
+            "draft_decline",
+            "❌  Draft Decline Letter\nBroker Liaison",
+            **_node_style("draft_decline", "broker_liaison"),
+        )
+        p3.node(
+            "update_state",
+            "🔄  Update State\nHuman Override",
+            **_node_style("update_state", "human"),
+        )
 
-    # --- Edges ---
-    g.edge("START", "ingest_and_classify")
-    g.edge("ingest_and_classify", "check_data_completeness")
-    g.edge("check_data_completeness", "is_data_complete")
-    g.edge("is_data_complete", "draft_missing_info", label="missing_docs", color="#DC3545", fontcolor="#DC3545")
-    g.edge("is_data_complete", "enrichment", label="data_complete", color="#28A745", fontcolor="#28A745")
-    g.edge("draft_missing_info", "END")
-    g.edge("enrichment", "check_knockout_rules")
-    g.edge("check_knockout_rules", "knockout_check")
-    g.edge("knockout_check", "draft_decline", label="fail", color="#DC3545", fontcolor="#DC3545")
-    g.edge("knockout_check", "risk_assessment", label="pass", color="#28A745", fontcolor="#28A745")
-    g.edge("risk_assessment", "human_checkpoint")
-    g.edge("human_checkpoint", "human_decision")
-    g.edge("human_decision", "generate_quote", label="approve", color="#28A745", fontcolor="#28A745")
-    g.edge("human_decision", "draft_decline", label="decline", color="#DC3545", fontcolor="#DC3545")
-    g.edge("human_decision", "update_state", label="modify", color="#FF8C00", fontcolor="#FF8C00")
-    g.edge("update_state", "risk_assessment", style="dashed", label="loop back", color="#FF8C00", fontcolor="#FF8C00")
-    g.edge("generate_quote", "END")
-    g.edge("draft_decline", "END")
+    # ── Edges ───────────────────────────────────────────────────
+    _edge = g.edge  # shorthand
+
+    # Phase 1 flow
+    _edge("START", "ingest_and_classify", color="#4285F4", penwidth="2")
+    _edge("ingest_and_classify", "check_data_completeness", color=EDGE_DEFAULT)
+    _edge("check_data_completeness", "is_data_complete", color=EDGE_DEFAULT)
+    _edge("is_data_complete", "draft_missing_info",
+          label="  missing docs  ", color=EDGE_FAIL, fontcolor=EDGE_FAIL, penwidth="2", style="dashed")
+    _edge("is_data_complete", "enrichment",
+          label="  complete  ", color=EDGE_PASS, fontcolor=EDGE_PASS, penwidth="2")
+    _edge("draft_missing_info", "END", color=EDGE_FAIL, style="dashed")
+
+    # Phase 2 flow
+    _edge("enrichment", "check_knockout_rules", color=EDGE_DEFAULT)
+    _edge("check_knockout_rules", "knockout_check", color=EDGE_DEFAULT)
+    _edge("knockout_check", "draft_decline",
+          label="  fail  ", color=EDGE_FAIL, fontcolor=EDGE_FAIL, penwidth="2", style="dashed")
+    _edge("knockout_check", "risk_assessment",
+          label="  pass  ", color=EDGE_PASS, fontcolor=EDGE_PASS, penwidth="2")
+
+    # Phase 2 → Phase 3
+    _edge("risk_assessment", "human_checkpoint", color="#A142F4", penwidth="2")
+
+    # Phase 3 flow
+    _edge("human_checkpoint", "human_decision", color=EDGE_DEFAULT)
+    _edge("human_decision", "generate_quote",
+          label="  approve  ", color=EDGE_PASS, fontcolor=EDGE_PASS, penwidth="2")
+    _edge("human_decision", "draft_decline",
+          label="  decline  ", color=EDGE_FAIL, fontcolor=EDGE_FAIL, penwidth="2", style="dashed")
+    _edge("human_decision", "update_state",
+          label="  modify  ", color=EDGE_MODIFY, fontcolor=EDGE_MODIFY, penwidth="2")
+    _edge("update_state", "risk_assessment",
+          label="  loop back  ", color=EDGE_MODIFY, fontcolor=EDGE_MODIFY,
+          style="dashed", penwidth="2", constraint="false")
+
+    # Terminals
+    _edge("generate_quote", "END", color=EDGE_PASS, penwidth="2")
+    _edge("draft_decline", "END", color=EDGE_FAIL, style="dashed")
 
     return g
 
@@ -287,12 +471,33 @@ with tab_workflow:
     diagram = render_workflow_diagram(state.status, state.decision)
     st.graphviz_chart(diagram, use_container_width=True)
 
-    # Legend
-    lc1, lc2, lc3, lc4 = st.columns(4)
-    lc1.markdown(":orange_square: **Current Step**")
-    lc2.markdown(":green_square: **Completed**")
-    lc3.markdown(":white_large_square: **Pending**")
-    lc4.markdown(":yellow_square: **Decision Point**")
+    # Enhanced legend
+    st.markdown("---")
+    st.caption("LEGEND")
+    leg1, leg2 = st.columns(2)
+
+    with leg1:
+        st.markdown(
+            """
+            **Node Status**
+            - 🟧 **Orange** — Current active step
+            - 🟩 **Green** — Completed
+            - ⬜ **Colored border** — Pending (color = agent)
+            - 🔶 **Diamond** — Conditional decision point
+            """
+        )
+
+    with leg2:
+        st.markdown(
+            """
+            **Agent Colors**
+            - 🔵 **Blue** — Classification Agent
+            - 🟢 **Green** — Data Retrieval Agent
+            - 🟡 **Amber** — Underwriting Analyst Agent
+            - 🔴 **Red** — Broker Liaison Agent
+            - 🟣 **Purple** — Supervisor / Human Override
+            """
+        )
 
 # --- Tab 3: Extracted Data ---
 with tab_data:
