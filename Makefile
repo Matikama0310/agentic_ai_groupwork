@@ -1,4 +1,4 @@
-.PHONY: help install test test-tools test-state test-workflow test-edges test-e2e test-coverage lint format clean demo server ui deploy logs
+.PHONY: help install test test-tools test-state test-workflow test-edges test-e2e test-coverage lint format clean demo server ui
 
 help:
 	@echo "NorthStar Agentic Underwriting System"
@@ -10,7 +10,7 @@ help:
 	@echo "  make ui                - Launch Streamlit workbench"
 	@echo ""
 	@echo "Testing:"
-	@echo "  make test              - Run all 36 tests"
+	@echo "  make test              - Run all tests"
 	@echo "  make test-tools        - Run tool tests only"
 	@echo "  make test-state        - Run state manager tests"
 	@echo "  make test-workflow     - Run workflow node tests"
@@ -21,10 +21,6 @@ help:
 	@echo "Code Quality:"
 	@echo "  make lint              - Lint code with pylint"
 	@echo "  make format            - Format code with black/isort"
-	@echo ""
-	@echo "Deployment:"
-	@echo "  make deploy ENV=dev    - Deploy to AWS (dev/staging/prod)"
-	@echo "  make logs ENV=dev      - Tail Lambda logs"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make install           - Install dependencies"
@@ -72,27 +68,15 @@ test-coverage:
 # --- Code Quality ---
 
 lint:
-	pylint src/ lambda/ --disable=C0114,C0115,C0116 2>/dev/null || echo "pylint not installed - run: pip install pylint"
+	pylint src/ --disable=C0114,C0115,C0116 2>/dev/null || echo "pylint not installed - run: pip install pylint"
 
 format:
-	black src/ tests/ lambda/ 2>/dev/null || echo "black not installed - run: pip install black"
-	isort src/ tests/ lambda/ 2>/dev/null || echo "isort not installed - run: pip install isort"
-
-# --- Deployment ---
-
-deploy:
-	@if [ -z "$(ENV)" ]; then echo "Usage: make deploy ENV=dev|staging|prod"; exit 1; fi
-	sam build
-	sam deploy --stack-name agentic-underwriting-$(ENV) --parameter-overrides Environment=$(ENV)
-	@echo "Deployment to $(ENV) complete"
-
-logs:
-	@if [ -z "$(ENV)" ]; then echo "Usage: make logs ENV=dev|staging|prod"; exit 1; fi
-	aws logs tail /aws/lambda/submission-handler-$(ENV) --follow
+	black src/ tests/ 2>/dev/null || echo "black not installed - run: pip install black"
+	isort src/ tests/ 2>/dev/null || echo "isort not installed - run: pip install isort"
 
 # --- Utilities ---
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
-	rm -rf .pytest_cache .coverage htmlcov/ dist/ build/ .aws-sam/
+	rm -rf .pytest_cache .coverage htmlcov/ dist/ build/

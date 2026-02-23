@@ -13,7 +13,7 @@ from src.tools.decision_logic import (
     validate_against_guidelines,
     calculate_risk_and_price,
 )
-from src.tools.document_understanding import extract_structured_data, analyze_image_hazards
+from src.tools.document_understanding import extract_structured_data
 from src.tools.data_acquisition import internal_claims_history, fetch_external_data, web_research_applicant
 from src.tools.communication import draft_missing_info_email, draft_decline_letter, draft_quote_email, generate_quote_pdf
 
@@ -49,15 +49,6 @@ class TestDocumentTools:
         assert result.success
         assert result.data["extraction_confidence"] <= 0.5
 
-    def test_analyze_image_hazards_with_image(self):
-        result = analyze_image_hazards("a" * 200)
-        assert result.success
-        assert len(result.data["hazards_detected"]) > 0
-
-    def test_analyze_image_hazards_empty(self):
-        result = analyze_image_hazards("short")
-        assert result.success
-        assert len(result.data["hazards_detected"]) == 0
 
 
 # ===========================================================================

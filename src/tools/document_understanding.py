@@ -1,14 +1,13 @@
 """
-Document Understanding Tools: OCR, extraction, image analysis.
+Document Understanding Tools: OCR and extraction.
 Maps to: Classification Agent in the architecture.
 
 Tools:
 - extract_structured_data: Intelligent OCR (AWS Textract / Azure Doc AI stand-in)
-- analyze_image_hazards: Multi-modal vision analysis for inspection photos
 """
 
-from typing import Dict, Any, List, Optional
 import logging
+from typing import Any, Dict, List, Optional
 
 from src.tools.decision_logic import ToolResult
 
@@ -21,7 +20,7 @@ def extract_structured_data(
 ) -> ToolResult:
     """
     Extract structured fields from submission documents.
-    MVP: mock extraction.  Production: AWS Textract / Claude Vision.
+    MVP: returns mock extracted fields.  Production: AWS Textract / Claude Vision.
     """
     confidence = 0.85 if len(document_content) > 100 else 0.5
 
@@ -42,7 +41,11 @@ def extract_structured_data(
         "submitted_documents": ["application_form", "financial_statements", "loss_history"],
     }
 
-    missing = [f for f in ["applicant_name", "business_type", "address", "annual_revenue"] if not extracted.get(f)]
+    missing = [
+        f
+        for f in ["applicant_name", "business_type", "address", "annual_revenue"]
+        if not extracted.get(f)
+    ]
 
     return ToolResult(
         True,
@@ -52,26 +55,4 @@ def extract_structured_data(
             "missing_fields": missing,
             "document_types": ["application_form", "financial_statements"],
         },
-    )
-
-
-def analyze_image_hazards(
-    image_base64: str,
-    hazard_types: Optional[List[str]] = None,
-) -> ToolResult:
-    """
-    Analyze inspection images for hazards.
-    MVP: mock.  Production: Claude Vision / custom CV model.
-    """
-    hazard_types = hazard_types or ["electrical", "fire", "structural"]
-
-    hazards = (
-        [{"type": "electrical", "description": "Outdated knob-and-tube wiring detected", "severity": "high"}]
-        if len(image_base64) > 100
-        else []
-    )
-
-    return ToolResult(
-        True,
-        {"hazards_detected": hazards, "analysis_confidence": 0.85 if hazards else 0.95},
     )

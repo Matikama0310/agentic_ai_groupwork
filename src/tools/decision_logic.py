@@ -89,8 +89,8 @@ UNDERWRITING_GUIDELINES = {
 # ---------------------------------------------------------------------------
 def classify_naics_code(business_description: str, business_name: str = "") -> ToolResult:
     """
-    Classify business into NAICS code.
-    MVP: keyword matching.  Production: LLM + lookup service.
+    Classify business into NAICS code using keyword matching.
+    MVP: deterministic keyword map.  Production: LLM-based classification.
     """
     keywords_map = {
         ("restaurant", "cafe", "diner", "food"): ("722110", "Food Service", 0.85),

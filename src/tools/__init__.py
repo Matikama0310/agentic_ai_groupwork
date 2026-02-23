@@ -1,7 +1,7 @@
 """
 Tools package: Organized by category per architecture spec.
 - data_acquisition: Internal, External Bureau, Web scraping tools
-- document_understanding: OCR, image analysis tools
+- document_understanding: OCR extraction tools
 - decision_logic: Guidelines validation, risk scoring, NAICS classification
 - communication: Email drafting, quote generation
 """
@@ -13,7 +13,6 @@ from src.tools.data_acquisition import (
 )
 from src.tools.document_understanding import (
     extract_structured_data,
-    analyze_image_hazards,
 )
 from src.tools.decision_logic import (
     classify_naics_code,
@@ -34,7 +33,6 @@ __all__ = [
     "fetch_external_data",
     "web_research_applicant",
     "extract_structured_data",
-    "analyze_image_hazards",
     "classify_naics_code",
     "validate_against_guidelines",
     "calculate_risk_and_price",

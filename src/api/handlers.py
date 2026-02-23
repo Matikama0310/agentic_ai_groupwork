@@ -1,5 +1,5 @@
 """
-API Handlers: FastAPI application + Lambda-compatible handlers.
+API Handlers: FastAPI application.
 
 Endpoints:
   POST /submit    - Process new insurance application
@@ -11,7 +11,7 @@ Endpoints:
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
@@ -111,93 +111,3 @@ def create_app() -> FastAPI:
         return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
 
     return app
-
-
-# ---------------------------------------------------------------------------
-# Legacy handler classes (Lambda compatibility)
-# ---------------------------------------------------------------------------
-class SubmissionHandler:
-    """Handles new submission requests (Lambda-style)."""
-
-    def __init__(self):
-        self.supervisor = SupervisorAgent()
-        self.state_manager = get_state_manager()
-
-    def handle_submission(self, event: Dict[str, Any]) -> Dict[str, Any]:
-        try:
-            if not event:
-                return self._error(400, "Event is empty")
-            email_subject = event.get("email_subject", "")
-            email_body = event.get("email_body", "")
-            broker_email = event.get("broker_email", "")
-            broker_name = event.get("broker_name", "")
-            attachments = event.get("attachments", [])
-            if not all([email_subject, email_body, broker_email]):
-                return self._error(400, "Missing required fields: email_subject, email_body, broker_email")
-            sub_id = f"SUB-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:8].upper()}"
-            state = self.supervisor.process_submission(
-                sub_id, email_subject, email_body, broker_email, broker_name, attachments,
-            )
-            return {
-                "status_code": 200,
-                "submission_id": sub_id,
-                "decision": state.decision,
-                "message": f"Processed. Decision: {state.decision}",
-                "data": self.state_manager.get_submission_summary(sub_id),
-            }
-        except Exception as e:
-            logger.exception("Submission error")
-            return self._error(500, str(e))
-
-    def _error(self, code: int, msg: str):
-        return {"status_code": code, "submission_id": None, "decision": None, "message": msg, "data": None}
-
-
-class OverrideHandler:
-    """Handles human overrides (Lambda-style)."""
-
-    def __init__(self):
-        self.state_manager = get_state_manager()
-
-    def handle_override(self, event: Dict[str, Any]) -> Dict[str, Any]:
-        try:
-            sid = event.get("submission_id")
-            uid = event.get("user_id")
-            dec = event.get("override_decision")
-            reason = event.get("override_reason", "")
-            if not all([sid, uid, dec]):
-                return {"status_code": 400, "submission_id": None, "message": "Missing fields", "data": None}
-            if dec not in ["QUOTED", "DECLINED", "MISSING_INFO", "MANUAL_REVIEW"]:
-                return {"status_code": 400, "submission_id": None, "message": f"Invalid decision: {dec}", "data": None}
-            state = self.state_manager.get_state(sid)
-            if not state:
-                return {"status_code": 404, "submission_id": None, "message": "Not found", "data": None}
-            self.state_manager.apply_override(sid, uid, dec, reason)
-            return {
-                "status_code": 200,
-                "submission_id": sid,
-                "message": "Override applied",
-                "data": self.state_manager.get_submission_summary(sid),
-            }
-        except Exception as e:
-            return {"status_code": 500, "submission_id": None, "message": str(e), "data": None}
-
-
-class QueryHandler:
-    """Handles status queries (Lambda-style)."""
-
-    def __init__(self):
-        self.state_manager = get_state_manager()
-
-    def handle_status_query(self, event: Dict[str, Any]) -> Dict[str, Any]:
-        try:
-            sid = event.get("submission_id")
-            if sid:
-                summary = self.state_manager.get_submission_summary(sid)
-                if "error" in summary:
-                    return {"status_code": 404, "message": "Not found", "data": None}
-                return {"status_code": 200, "message": "Found", "data": summary}
-            subs = self.state_manager.list_submissions()
-            return {"status_code": 200, "message": f"Found {len(subs)}", "data": {"total": len(subs), "submissions": subs}}
-        except Exception as e:
-            return {"status_code": 500, "message": str(e), "data": None}

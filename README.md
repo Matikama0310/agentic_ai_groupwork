@@ -3,7 +3,7 @@
 ![Status](https://img.shields.io/badge/status-MVP-green)
 ![Python](https://img.shields.io/badge/python-3.12+-blue)
 ![LangGraph](https://img.shields.io/badge/langgraph-0.2+-blue)
-![Tests](https://img.shields.io/badge/tests-36%20passing-green)
+![Tests](https://img.shields.io/badge/tests-36_passing-green)
 
 An **agentic AI system** for automated insurance underwriting built with **LangGraph StateGraph** and **Streamlit**. Insurance applications flow through a 3-phase workflow (Ingestion, Qualification, Human Review) powered by 5 specialized agents and 12 tools, with human-in-the-loop decision making via a Streamlit workbench.
 
@@ -74,7 +74,7 @@ Copy-Item .env.example .env
 cp .env.example .env
 ```
 
-> No API keys are needed for MVP testing. All external services use mock data.
+> No API keys are needed for MVP testing. All external services use mock data. See [PRODUCTION_CONSIDERATIONS.md](docs/PRODUCTION_CONSIDERATIONS.md) for what's needed to go live.
 
 ---
 
@@ -180,7 +180,8 @@ agentic_ai_groupwork/
 ├── docs/
 │   ├── ARCHITECTURE.md                  # Workflow, agents, tools, state, traceability
 │   ├── IMPLEMENTATION_GUIDE.md          # Mock vs production, how to extend, testing
-│   └── OPERATIONS_RUNBOOK.md            # Deployment, API reference, troubleshooting
+│   ├── OPERATIONS_RUNBOOK.md            # Deployment, API reference, troubleshooting
+│   └── PRODUCTION_CONSIDERATIONS.md     # What's needed for real deployment
 │
 ├── infrastructure/
 │   └── sam_template.yaml                # AWS SAM template (3 Lambda + API Gateway)
@@ -258,3 +259,4 @@ For production, fill in `.env` with real API keys. See `.env.example` for the fu
 | **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** | How the workflow, agents, tools, and state management work together. Includes traceability matrix (requirements to code to tests). |
 | **[IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md)** | What's mock vs production, how to swap to real APIs, how to add tools/nodes/rules, testing strategy. |
 | **[OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md)** | API reference with curl examples, AWS deployment, monitoring, troubleshooting. |
+| **[PRODUCTION_CONSIDERATIONS.md](docs/PRODUCTION_CONSIDERATIONS.md)** | Everything needed to move from MVP to real deployment: LLM integration, APIs, infrastructure, costs, testing. |
