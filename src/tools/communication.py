@@ -26,7 +26,7 @@ def draft_missing_info_email(
 ) -> ToolResult:
     """
     Draft email requesting missing documentation.
-    Triggered by Gap Analysis Agent when critical docs are absent.
+    Triggered by Underwriting Analyst Agent when critical docs are absent.
     """
     missing_documents = missing_documents or []
     docs_text = "\n".join(f"  - {doc.replace('_', ' ').title()}" for doc in missing_documents)

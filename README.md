@@ -5,7 +5,7 @@
 ![LangGraph](https://img.shields.io/badge/langgraph-0.2+-blue)
 ![Tests](https://img.shields.io/badge/tests-36%20passing-green)
 
-An **agentic AI system** for automated insurance underwriting built with **LangGraph StateGraph** and **Streamlit**. Insurance applications flow through a 3-phase workflow (Ingestion, Qualification, Human Review) powered by 6 specialized agents and 12 tools, with human-in-the-loop decision making via a Streamlit workbench.
+An **agentic AI system** for automated insurance underwriting built with **LangGraph StateGraph** and **Streamlit**. Insurance applications flow through a 3-phase workflow (Ingestion, Qualification, Human Review) powered by 5 specialized agents and 12 tools, with human-in-the-loop decision making via a Streamlit workbench.
 
 **Business Problem:** NorthStar Insurance underwriters spend 40-65% of their time on manual data gathering. This system automates the full pipeline while keeping humans in the loop for final decisions.
 
@@ -216,15 +216,14 @@ Phase 3: The Workbench (Human-in-the-Loop)
             └── Modify  -> Update State -> loop back to Risk Assessment
 ```
 
-### 6 Agents, 12 Tools
+### 5 Agents, 12 Tools
 
 | Agent | Role | Tools |
 |-------|------|-------|
 | **Supervisor** | Orchestrates LangGraph workflow | State Manager |
 | **Classification** | OCR extraction + NAICS classification | `extract_structured_data`, `classify_naics_code` |
-| **Data Retrievers** (3x) | Parallel data acquisition | `internal_claims_history`, `fetch_external_data`, `web_research_applicant` |
-| **Gap Analysis** | Validates completeness + knockout rules | `validate_against_guidelines` |
-| **Analyst** | Risk scoring + premium calculation | `calculate_risk_and_price` |
+| **Data Retrieval** | Parallel data acquisition (internal, external, web) | `internal_claims_history`, `fetch_external_data`, `web_research_applicant` |
+| **Underwriting Analyst** | Data completeness, knockout rules, risk scoring + pricing | `validate_against_guidelines`, `calculate_risk_and_price` |
 | **Broker Liaison** | Drafts all broker communications | `draft_missing_info_email`, `draft_decline_letter`, `draft_quote_email`, `generate_quote_pdf` |
 
 ### 4 Decision Outcomes

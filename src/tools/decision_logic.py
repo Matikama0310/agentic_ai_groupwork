@@ -1,6 +1,6 @@
 """
 Decision & Logic Tools: Rule validation, risk scoring, pricing.
-Maps to: Supervisor Agent + Analyst Agents in the architecture.
+Maps to: Underwriting Analyst Agent in the architecture.
 
 Tools:
 - classify_naics_code: NAICS/SIC classification
@@ -113,7 +113,7 @@ def classify_naics_code(business_description: str, business_name: str = "") -> T
 
 
 # ---------------------------------------------------------------------------
-# Gap Analysis Agent Tool  (Rule Engine Validator)
+# Underwriting Analyst Agent Tool  (Rule Engine Validator)
 # ---------------------------------------------------------------------------
 def validate_against_guidelines(
     extracted_data: Dict[str, Any],

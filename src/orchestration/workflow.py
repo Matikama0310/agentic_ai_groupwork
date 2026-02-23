@@ -7,11 +7,11 @@ Implements the 3-phase workflow from the architecture diagram:
   Phase 3: The Workbench        (Human-in-the-loop checkpoint → Approve/Modify/Decline)
 
 Agents mapped:
-  - Supervisor Agent:       Orchestrates the full graph
-  - Classification Agent:   Ingest & Classify node
-  - Data Retriever Agents:  Enrichment node (internal, external, web - parallel)
-  - Analyst Agents:         Gap Analysis + Risk Assessment nodes
-  - Broker Liaison Agent:   Missing Info / Decline / Quote output nodes
+  - Supervisor Agent:            Orchestrates the full graph
+  - Classification Agent:        Ingest & Classify node
+  - Data Retrieval Agent:        Enrichment node (internal, external, web - parallel)
+  - Underwriting Analyst Agent:  Data Completeness + Knockout Rules + Risk Assessment nodes
+  - Broker Liaison Agent:        Missing Info / Decline / Quote output nodes
 """
 
 from __future__ import annotations
@@ -142,7 +142,7 @@ def check_data_completeness(state: dict) -> dict:
     """
     Phase 1 - Node: Extraction (data completeness check).
     Validates that critical documents are present.
-    Agent: Gap Analysis Agent (partial)
+    Agent: Underwriting Analyst Agent
     """
     logger.info(f"[{state['submission_id']}] NODE: check_data_completeness")
 
@@ -153,7 +153,7 @@ def check_data_completeness(state: dict) -> dict:
 
     updates: dict = {
         "validation_result": result.data if result.success else {},
-        "audit_trail": _audit(state, "GapAnalysisAgent", "check_data_completeness",
+        "audit_trail": _audit(state, "UnderwritingAnalystAgent", "check_data_completeness",
                                f"missing={missing}"),
     }
 
@@ -191,7 +191,7 @@ def draft_missing_info(state: dict) -> dict:
 def check_knockout_rules(state: dict) -> dict:
     """
     Phase 2 - Conditional: Hard Knock-out Rules?
-    Agent: Gap Analysis Agent
+    Agent: Underwriting Analyst Agent
     """
     logger.info(f"[{state['submission_id']}] NODE: check_knockout_rules")
 
@@ -203,7 +203,7 @@ def check_knockout_rules(state: dict) -> dict:
 
     updates: dict = {
         "validation_result": result.data if result.success else {},
-        "audit_trail": _audit(state, "GapAnalysisAgent", "check_knockout_rules",
+        "audit_trail": _audit(state, "UnderwritingAnalystAgent", "check_knockout_rules",
                                f"passes={result.data.get('passes_guidelines') if result.success else 'error'}"),
     }
 
@@ -216,7 +216,7 @@ def check_knockout_rules(state: dict) -> dict:
 def enrichment(state: dict) -> dict:
     """
     Phase 2 - Node: Enrichment (calls D&B / HazardHub APIs).
-    Agents: Data Retriever Agents (Internal, External Bureau, Open Source) - parallel.
+    Agent: Data Retrieval Agent (Internal, External Bureau, Open Source) - parallel.
     """
     logger.info(f"[{state['submission_id']}] NODE: enrichment (parallel data retrieval)")
 
@@ -231,7 +231,7 @@ def enrichment(state: dict) -> dict:
     external = fetch_external_data(applicant_name, applicant_address)
     web = web_research_applicant(applicant_name, applicant_website)
 
-    trail = _audit(state, "DataRetrieverAgents", "enrichment_parallel",
+    trail = _audit(state, "DataRetrievalAgent", "enrichment_parallel",
                     f"internal={internal.success}, external={external.success}, web={web.success}")
 
     return {
@@ -246,7 +246,7 @@ def enrichment(state: dict) -> dict:
 def risk_assessment(state: dict) -> dict:
     """
     Phase 2 - Node: Risk Assessment (RAG Search + Pricing Calc).
-    Agent: Analyst Agent
+    Agent: Underwriting Analyst Agent
     """
     logger.info(f"[{state['submission_id']}] NODE: risk_assessment")
 
@@ -259,7 +259,7 @@ def risk_assessment(state: dict) -> dict:
     updates: dict = {
         "status": "ANALYSIS",
         "risk_metrics": result.data if result.success else {},
-        "audit_trail": _audit(state, "AnalystAgent", "risk_assessment",
+        "audit_trail": _audit(state, "UnderwritingAnalystAgent", "risk_assessment",
                                f"premium=${result.data.get('annual_premium', 0):.2f}" if result.success else "error"),
     }
 
@@ -314,7 +314,7 @@ def draft_decline(state: dict) -> dict:
 def generate_quote(state: dict) -> dict:
     """
     Phase 3 - Node: Generate Quote Package (PDF + email).
-    Agent: Broker Liaison Agent + Output Agent
+    Agent: Broker Liaison Agent
     """
     logger.info(f"[{state['submission_id']}] NODE: generate_quote")
     extracted = state.get("extracted_data") or {}

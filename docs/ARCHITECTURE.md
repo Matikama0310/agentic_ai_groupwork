@@ -51,7 +51,7 @@ PHASE 1: INGESTION & TRIAGE
 │            ▼                                                 │
 │  ┌─────────────────────────┐                                 │
 │  │ check_data_completeness │  Are all required documents     │
-│  │ (Gap Analysis Agent)    │  present?                       │
+│  │ (Underwriting Analyst)    │  present?                       │
 │  └─────────┬───────────────┘                                 │
 │            ▼                                                 │
 │     ┌──────────────┐                                         │
@@ -74,13 +74,13 @@ PHASE 2: QUALIFICATION
 │                                                              │
 │  ┌───────────────┐                                           │
 │  │ enrichment     │  3x parallel data retrieval:             │
-│  │ (3x Data       │  - Internal claims history               │
-│  │  Retrievers)   │  - External bureaus (D&B, HazardHub)     │
+│  │ (Data Retrieval│  - Internal claims history               │
+│  │  Agent)        │  - External bureaus (D&B, HazardHub)     │
 │  └───────┬───────┘  - Web research                           │
 │          ▼                                                   │
 │  ┌────────────────────┐                                      │
 │  │check_knockout_rules │  Validate hard underwriting rules   │
-│  │(Gap Analysis Agent) │  (credit, loss ratio, D/E, years)   │
+│  │(Underwriting Analyst) │  (credit, loss ratio, D/E, years)   │
 │  └────────┬───────────┘                                      │
 │           ▼                                                  │
 │    ┌──────────────┐                                          │
@@ -91,7 +91,7 @@ PHASE 2: QUALIFICATION
 │       ▼        ▼                                             │
 │  ┌──────────┐ ┌────────────────┐                             │
 │  │draft_    │ │risk_assessment  │  Risk score (0-100)        │
-│  │decline   │ │(Analyst Agent)  │  + premium calculation     │
+│  │decline   │ │(Underwriting Analyst)  │  + premium calculation     │
 │  │(Broker   │ └────────┬───────┘                             │
 │  │ Liaison) │          └──────────────────── to Phase 3      │
 │  └────┬─────┘                                                │
@@ -191,7 +191,7 @@ When the human selects "Modify", the workflow routes to `update_state_node` whic
 
 ## 4. Agent Architecture
 
-The system uses 6 conceptual agents, each mapped to LangGraph nodes:
+The system uses 5 agents, each mapped to LangGraph nodes:
 
 ### Supervisor Agent
 - **File:** `src/orchestration/supervisor_agent.py`
@@ -210,23 +210,17 @@ The system uses 6 conceptual agents, each mapped to LangGraph nodes:
 - **Role:** Extracts structured fields from documents (OCR) and classifies the business by NAICS industry code
 - **Output:** `extracted_data`, `naics_code`, `naics_industry`, `extraction_confidence`
 
-### Data Retriever Agents (3x)
+### Data Retrieval Agent
 - **Node:** `enrichment`
 - **Tools:** `internal_claims_history`, `fetch_external_data`, `web_research_applicant`
-- **Role:** Three parallel data retrievers that gather internal claims, external credit/property data, and web presence information
+- **Role:** Gathers data from three sources in parallel: internal claims history, external credit/property bureaus, and web presence research
 - **Output:** `internal_data`, `external_data`, `web_data`
 
-### Gap Analysis Agent
-- **Nodes:** `check_data_completeness`, `check_knockout_rules`
-- **Tool:** `validate_against_guidelines`
-- **Role:** Validates document completeness and checks hard underwriting rules
-- **Output:** `validation_result` with `passes_guidelines`, `failed_rules`, `missing_critical_docs`
-
-### Analyst Agent
-- **Node:** `risk_assessment`
-- **Tool:** `calculate_risk_and_price`
-- **Role:** Calculates a risk score (0-100) and annual premium based on credit, loss history, and business size
-- **Output:** `risk_metrics` with `risk_score`, `annual_premium`, `loss_ratio`, `pricing_rationale`
+### Underwriting Analyst Agent
+- **Nodes:** `check_data_completeness`, `check_knockout_rules`, `risk_assessment`
+- **Tools:** `validate_against_guidelines`, `calculate_risk_and_price`
+- **Role:** Handles all application evaluation: validates document completeness, checks hard underwriting rules (knockout), and calculates risk score + premium pricing
+- **Output:** `validation_result` (with `passes_guidelines`, `failed_rules`, `missing_critical_docs`), `risk_metrics` (with `risk_score`, `annual_premium`, `loss_ratio`, `pricing_rationale`)
 
 ### Broker Liaison Agent
 - **Nodes:** `draft_missing_info`, `draft_decline`, `generate_quote`
@@ -399,15 +393,15 @@ The sidebar provides a submission form to create new applications.
 | FR-1 | Ingest email submissions | Classification | `workflow.py::ingest_and_classify` | `TestWorkflowNodes::test_ingest_and_classify` |
 | FR-2 | Classify content (NAICS) | Classification | `decision_logic.py::classify_naics_code` | `TestDecisionTools::test_classify_naics_*` |
 | FR-3 | Extract data via OCR | Classification | `document_understanding.py::extract_structured_data` | `TestDocumentTools::test_extract_*` |
-| FR-4 | Enrich with external APIs | Data Retrievers | `data_acquisition.py::*` | `TestDataTools::*` |
-| FR-5 | Validate against guidelines | Gap Analysis | `decision_logic.py::validate_against_guidelines` | `TestDecisionTools::test_validate_*` |
-| FR-6 | Calculate risk + pricing | Analyst | `decision_logic.py::calculate_risk_and_price` | `TestDecisionTools::test_calculate_*` |
+| FR-4 | Enrich with external APIs | Data Retrieval | `data_acquisition.py::*` | `TestDataTools::*` |
+| FR-5 | Validate against guidelines | Underwriting Analyst | `decision_logic.py::validate_against_guidelines` | `TestDecisionTools::test_validate_*` |
+| FR-6 | Calculate risk + pricing | Underwriting Analyst | `decision_logic.py::calculate_risk_and_price` | `TestDecisionTools::test_calculate_*` |
 | FR-7 | Generate quote package | Broker Liaison | `communication.py::generate_quote_pdf` | `TestCommsTools::test_generate_*` |
 | FR-8 | Draft missing info emails | Broker Liaison | `communication.py::draft_missing_info_email` | `TestCommsTools::test_draft_missing_*` |
 | FR-9 | Draft decline letters | Broker Liaison | `communication.py::draft_decline_letter` | `TestCommsTools::test_draft_decline_*` |
 | FR-10 | Human overrides | Supervisor + UI | `state_manager.py::apply_override` | `TestStateManager::test_apply_override` |
 | FR-11 | Audit trail | State Manager | `state_manager.py::add_audit_entry` | `TestStateManager::test_audit_entry` |
-| FR-12 | Parallel data retrieval | Data Retrievers | `workflow.py::enrichment` | `TestWorkflowNodes::test_enrichment` |
+| FR-12 | Parallel data retrieval | Data Retrieval | `workflow.py::enrichment` | `TestWorkflowNodes::test_enrichment` |
 | FR-13 | 3-phase workflow | Supervisor | `workflow.py::build_underwriting_graph` | `TestEndToEnd::test_full_workflow_*` |
 
 ### Non-Functional Requirements

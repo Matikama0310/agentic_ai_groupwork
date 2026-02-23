@@ -153,17 +153,17 @@ def render_workflow_diagram(current_status: str = "", current_decision: str = ""
     with g.subgraph(name="cluster_phase1") as p1:
         p1.attr(label="Phase 1: Ingestion & Triage", style="dashed", color="#4A90D9", fontcolor="#4A90D9")
         p1.node("ingest_and_classify", "Ingest & Classify\n(Classification Agent)", **_style("ingest_and_classify"))
-        p1.node("check_data_completeness", "Check Data\nCompleteness\n(Gap Analysis Agent)", **_style("check_data_completeness"))
+        p1.node("check_data_completeness", "Check Data\nCompleteness\n(Underwriting Analyst)", **_style("check_data_completeness"))
         p1.node("is_data_complete", "Data\nComplete?", shape="diamond", fillcolor="#FFF3CD", style="filled", width="1.4", height="0.9")
         p1.node("draft_missing_info", "Draft Missing\nInfo Email\n(Broker Liaison)", **_style("draft_missing_info"))
 
     # --- Phase 2: Qualification ---
     with g.subgraph(name="cluster_phase2") as p2:
         p2.attr(label="Phase 2: Qualification", style="dashed", color="#28A745", fontcolor="#28A745")
-        p2.node("enrichment", "Enrichment\n(3x Data Retrievers)", **_style("enrichment"))
-        p2.node("check_knockout_rules", "Check Knockout\nRules\n(Gap Analysis Agent)", **_style("check_knockout_rules"))
+        p2.node("enrichment", "Enrichment\n(Data Retrieval Agent)", **_style("enrichment"))
+        p2.node("check_knockout_rules", "Check Knockout\nRules\n(Underwriting Analyst)", **_style("check_knockout_rules"))
         p2.node("knockout_check", "Knockout\nRules?", shape="diamond", fillcolor="#FFF3CD", style="filled", width="1.4", height="0.9")
-        p2.node("risk_assessment", "Risk Assessment\n(Analyst Agent)", **_style("risk_assessment"))
+        p2.node("risk_assessment", "Risk Assessment\n(Underwriting Analyst)", **_style("risk_assessment"))
 
     # --- Phase 3: The Workbench ---
     with g.subgraph(name="cluster_phase3") as p3:

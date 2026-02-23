@@ -1,6 +1,6 @@
 """
 Document Understanding Tools: OCR, extraction, image analysis.
-Maps to: Analyst Agents (Classification Agent).
+Maps to: Classification Agent in the architecture.
 
 Tools:
 - extract_structured_data: Intelligent OCR (AWS Textract / Azure Doc AI stand-in)

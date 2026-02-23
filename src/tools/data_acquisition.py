@@ -1,6 +1,6 @@
 """
 Data Acquisition Tools: Fetch from internal & external data sources.
-Maps to: Data Retriever Agents (Internal, External Bureau, Open Source).
+Maps to: Data Retrieval Agent (Internal, External Bureau, Open Source).
 
 Tools:
 - internal_claims_history: SQL/API wrapper for legacy claims systems
