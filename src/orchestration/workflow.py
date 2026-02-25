@@ -2,9 +2,9 @@
 LangGraph StateGraph Workflow for NorthStar Underwriting.
 
 Implements the 3-phase workflow from the architecture diagram:
-  Phase 1: Ingestion & Triage  (Ingest → Extract → Is Data Complete?)
-  Phase 2: Qualification        (Knockout Rules → Enrichment → Risk Assessment)
-  Phase 3: The Workbench        (Human-in-the-loop checkpoint → Approve/Modify/Decline)
+  Phase 1: Ingestion & Triage  (Ingest -> Extract -> Is Data Complete?)
+  Phase 2: Qualification        (Knockout Rules -> Enrichment -> Risk Assessment)
+  Phase 3: The Workbench        (Human-in-the-loop checkpoint -> Approve/Modify/Decline)
 
 Agents mapped:
   - Supervisor Agent:            Orchestrates the full graph
@@ -17,7 +17,7 @@ Agents mapped:
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional, TypedDict
 
 from langgraph.graph import END, StateGraph
@@ -87,12 +87,19 @@ class UnderwritingState(TypedDict, total=False):
 def _audit(state: dict, component: str, action: str, result: str = "") -> dict:
     trail = list(state.get("audit_trail", []))
     trail.append({
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "component": component,
         "action": action,
         "result": result,
     })
     return trail
+
+
+def _append_error(state: dict, phase: str, error: str) -> list:
+    """Return a new errors list with an additional error entry."""
+    errors = list(state.get("errors", []))
+    errors.append({"phase": phase, "error": str(error)})
+    return errors
 
 
 # ===================================================================
@@ -107,60 +114,78 @@ def ingest_and_classify(state: dict) -> dict:
     """
     logger.info(f"[{state['submission_id']}] NODE: ingest_and_classify")
 
-    document_content = f"{state.get('email_subject', '')}\n{state.get('email_body', '')}"
-    for att in state.get("attachments", []):
-        document_content += f"\n{att.get('content', '')}"
+    try:
+        document_content = f"{state.get('email_subject', '')}\n{state.get('email_body', '')}"
+        for att in state.get("attachments", []):
+            if isinstance(att, dict):
+                document_content += f"\n{att.get('content', '')}"
 
-    result = extract_structured_data(document_content)
+        result = extract_structured_data(document_content)
 
-    updates: dict = {
-        "status": "EXTRACTION",
-        "errors": list(state.get("errors", [])),
-    }
+        updates: dict = {
+            "status": "EXTRACTION",
+            "errors": list(state.get("errors", [])),
+        }
 
-    if result.success:
-        updates["extracted_data"] = result.data.get("extracted_fields")
-        updates["extraction_confidence"] = result.data.get("extraction_confidence")
-        updates["document_types"] = result.data.get("document_types", [])
+        if result.success:
+            updates["extracted_data"] = result.data.get("extracted_fields") or {}
+            updates["extraction_confidence"] = result.data.get("extraction_confidence")
+            updates["document_types"] = result.data.get("document_types", [])
 
-        # Classify business
-        business_desc = updates["extracted_data"].get("business_type", "")
-        business_name = updates["extracted_data"].get("applicant_name", "")
-        naics = classify_naics_code(business_desc, business_name)
-        if naics.success:
-            updates["naics_code"] = naics.data.get("naics_code")
-            updates["classification_confidence"] = naics.data.get("confidence")
-    else:
-        updates["errors"] = updates["errors"] + [{"phase": "extraction", "error": result.error}]
+            # Classify business
+            business_desc = updates["extracted_data"].get("business_type", "")
+            business_name = updates["extracted_data"].get("applicant_name", "")
+            naics = classify_naics_code(business_desc, business_name)
+            if naics.success:
+                updates["naics_code"] = naics.data.get("naics_code")
+                updates["classification_confidence"] = naics.data.get("confidence")
+        else:
+            updates["errors"] = _append_error(state, "extraction", result.error or "Unknown extraction error")
 
-    updates["audit_trail"] = _audit(state, "ClassificationAgent", "ingest_and_classify",
-                                     f"confidence={updates.get('extraction_confidence')}")
-    return updates
+        updates["audit_trail"] = _audit(state, "ClassificationAgent", "ingest_and_classify",
+                                         f"confidence={updates.get('extraction_confidence')}")
+        return updates
+
+    except Exception as e:
+        logger.error(f"[{state.get('submission_id')}] ingest_and_classify crashed: {e}")
+        return {
+            "status": "FAILED",
+            "errors": _append_error(state, "ingest_and_classify", str(e)),
+            "audit_trail": _audit(state, "ClassificationAgent", "ingest_and_classify", f"ERROR: {e}"),
+        }
 
 
 def check_data_completeness(state: dict) -> dict:
     """
     Phase 1 - Node: Extraction (data completeness check).
-    Validates that critical documents are present.
     Agent: Underwriting Analyst Agent
     """
     logger.info(f"[{state['submission_id']}] NODE: check_data_completeness")
 
-    extracted = state.get("extracted_data") or {}
-    result = validate_against_guidelines(extracted)
+    try:
+        extracted = state.get("extracted_data") or {}
+        result = validate_against_guidelines(extracted)
 
-    missing = result.data.get("missing_critical_docs", []) if result.success else []
+        missing = result.data.get("missing_critical_docs", []) if result.success else []
 
-    updates: dict = {
-        "validation_result": result.data if result.success else {},
-        "audit_trail": _audit(state, "UnderwritingAnalystAgent", "check_data_completeness",
-                               f"missing={missing}"),
-    }
+        updates: dict = {
+            "validation_result": result.data if result.success else {},
+            "audit_trail": _audit(state, "UnderwritingAnalystAgent", "check_data_completeness",
+                                   f"missing={missing}"),
+        }
 
-    if missing:
-        updates["decision"] = "MISSING_INFO"
+        if missing:
+            updates["decision"] = "MISSING_INFO"
 
-    return updates
+        return updates
+
+    except Exception as e:
+        logger.error(f"[{state.get('submission_id')}] check_data_completeness crashed: {e}")
+        return {
+            "status": "FAILED",
+            "errors": _append_error(state, "check_data_completeness", str(e)),
+            "audit_trail": _audit(state, "UnderwritingAnalystAgent", "check_data_completeness", f"ERROR: {e}"),
+        }
 
 
 def draft_missing_info(state: dict) -> dict:
@@ -169,23 +194,34 @@ def draft_missing_info(state: dict) -> dict:
     Agent: Broker Liaison Agent
     """
     logger.info(f"[{state['submission_id']}] NODE: draft_missing_info")
-    extracted = state.get("extracted_data") or {}
-    missing = state.get("validation_result", {}).get("missing_critical_docs", [])
 
-    result = draft_missing_info_email(
-        state.get("broker_email", ""),
-        state.get("broker_name", ""),
-        extracted.get("applicant_name", "Unknown"),
-        missing,
-    )
+    try:
+        extracted = state.get("extracted_data") or {}
+        missing = state.get("validation_result", {}).get("missing_critical_docs", [])
 
-    return {
-        "drafted_email": result.data if result.success else None,
-        "status": "COMPLETED",
-        "decision": "MISSING_INFO",
-        "audit_trail": _audit(state, "BrokerLiaisonAgent", "draft_missing_info_email",
-                               f"missing_docs={len(missing)}"),
-    }
+        result = draft_missing_info_email(
+            state.get("broker_email", ""),
+            state.get("broker_name", ""),
+            extracted.get("applicant_name", "Unknown"),
+            missing,
+        )
+
+        return {
+            "drafted_email": result.data if result.success else None,
+            "status": "COMPLETED",
+            "decision": "MISSING_INFO",
+            "audit_trail": _audit(state, "BrokerLiaisonAgent", "draft_missing_info_email",
+                                   f"missing_docs={len(missing)}"),
+        }
+
+    except Exception as e:
+        logger.error(f"[{state.get('submission_id')}] draft_missing_info crashed: {e}")
+        return {
+            "status": "COMPLETED",
+            "decision": "MISSING_INFO",
+            "errors": _append_error(state, "draft_missing_info", str(e)),
+            "audit_trail": _audit(state, "BrokerLiaisonAgent", "draft_missing_info_email", f"ERROR: {e}"),
+        }
 
 
 def check_knockout_rules(state: dict) -> dict:
@@ -195,22 +231,31 @@ def check_knockout_rules(state: dict) -> dict:
     """
     logger.info(f"[{state['submission_id']}] NODE: check_knockout_rules")
 
-    extracted = state.get("extracted_data") or {}
-    external = state.get("external_data") or {}
-    internal = state.get("internal_data") or {}
+    try:
+        extracted = state.get("extracted_data") or {}
+        external = state.get("external_data") or {}
+        internal = state.get("internal_data") or {}
 
-    result = validate_against_guidelines(extracted, external, state.get("web_data"), internal)
+        result = validate_against_guidelines(extracted, external, state.get("web_data"), internal)
 
-    updates: dict = {
-        "validation_result": result.data if result.success else {},
-        "audit_trail": _audit(state, "UnderwritingAnalystAgent", "check_knockout_rules",
-                               f"passes={result.data.get('passes_guidelines') if result.success else 'error'}"),
-    }
+        updates: dict = {
+            "validation_result": result.data if result.success else {},
+            "audit_trail": _audit(state, "UnderwritingAnalystAgent", "check_knockout_rules",
+                                   f"passes={result.data.get('passes_guidelines') if result.success else 'error'}"),
+        }
 
-    if result.success and not result.data.get("passes_guidelines"):
-        updates["decision"] = "DECLINED"
+        if result.success and not result.data.get("passes_guidelines"):
+            updates["decision"] = "DECLINED"
 
-    return updates
+        return updates
+
+    except Exception as e:
+        logger.error(f"[{state.get('submission_id')}] check_knockout_rules crashed: {e}")
+        return {
+            "decision": "MANUAL_REVIEW",
+            "errors": _append_error(state, "check_knockout_rules", str(e)),
+            "audit_trail": _audit(state, "UnderwritingAnalystAgent", "check_knockout_rules", f"ERROR: {e}"),
+        }
 
 
 def enrichment(state: dict) -> dict:
@@ -220,27 +265,39 @@ def enrichment(state: dict) -> dict:
     """
     logger.info(f"[{state['submission_id']}] NODE: enrichment (parallel data retrieval)")
 
-    extracted = state.get("extracted_data") or {}
-    applicant_id = extracted.get("applicant_id", state["submission_id"])
-    applicant_name = extracted.get("applicant_name", "Unknown")
-    applicant_address = extracted.get("address", "")
-    applicant_website = extracted.get("website", "")
+    try:
+        extracted = state.get("extracted_data") or {}
+        applicant_id = extracted.get("applicant_id", state["submission_id"])
+        applicant_name = extracted.get("applicant_name", "Unknown")
+        applicant_address = extracted.get("address", "")
+        applicant_website = extracted.get("website", "")
 
-    # In production these run via asyncio.gather() for true parallelism
-    internal = internal_claims_history(applicant_id, applicant_name)
-    external = fetch_external_data(applicant_name, applicant_address)
-    web = web_research_applicant(applicant_name, applicant_website)
+        # In production these run via asyncio.gather() for true parallelism
+        internal = internal_claims_history(applicant_id, applicant_name)
+        external = fetch_external_data(applicant_name, applicant_address)
+        web = web_research_applicant(applicant_name, applicant_website)
 
-    trail = _audit(state, "DataRetrievalAgent", "enrichment_parallel",
-                    f"internal={internal.success}, external={external.success}, web={web.success}")
+        trail = _audit(state, "DataRetrievalAgent", "enrichment_parallel",
+                        f"internal={internal.success}, external={external.success}, web={web.success}")
 
-    return {
-        "status": "ENRICHMENT",
-        "internal_data": internal.data if internal.success else {},
-        "external_data": external.data if external.success else {},
-        "web_data": web.data if web.success else {},
-        "audit_trail": trail,
-    }
+        return {
+            "status": "ENRICHMENT",
+            "internal_data": internal.data if internal.success else {},
+            "external_data": external.data if external.success else {},
+            "web_data": web.data if web.success else {},
+            "audit_trail": trail,
+        }
+
+    except Exception as e:
+        logger.error(f"[{state.get('submission_id')}] enrichment crashed: {e}")
+        return {
+            "status": "ENRICHMENT",
+            "internal_data": {},
+            "external_data": {},
+            "web_data": {},
+            "errors": _append_error(state, "enrichment", str(e)),
+            "audit_trail": _audit(state, "DataRetrievalAgent", "enrichment_parallel", f"ERROR: {e}"),
+        }
 
 
 def risk_assessment(state: dict) -> dict:
@@ -250,25 +307,36 @@ def risk_assessment(state: dict) -> dict:
     """
     logger.info(f"[{state['submission_id']}] NODE: risk_assessment")
 
-    result = calculate_risk_and_price(
-        state.get("extracted_data") or {},
-        state.get("external_data"),
-        state.get("internal_data"),
-    )
+    try:
+        result = calculate_risk_and_price(
+            state.get("extracted_data") or {},
+            state.get("external_data"),
+            state.get("internal_data"),
+        )
 
-    updates: dict = {
-        "status": "ANALYSIS",
-        "risk_metrics": result.data if result.success else {},
-        "audit_trail": _audit(state, "UnderwritingAnalystAgent", "risk_assessment",
-                               f"premium=${result.data.get('annual_premium', 0):.2f}" if result.success else "error"),
-    }
+        updates: dict = {
+            "status": "ANALYSIS",
+            "risk_metrics": result.data if result.success else {},
+            "audit_trail": _audit(state, "UnderwritingAnalystAgent", "risk_assessment",
+                                   f"premium=${result.data.get('annual_premium', 0):.2f}" if result.success else "error"),
+        }
 
-    if result.success:
-        updates["decision"] = "QUOTED"
-    else:
-        updates["decision"] = "MANUAL_REVIEW"
+        if result.success:
+            updates["decision"] = "QUOTED"
+        else:
+            updates["decision"] = "MANUAL_REVIEW"
 
-    return updates
+        return updates
+
+    except Exception as e:
+        logger.error(f"[{state.get('submission_id')}] risk_assessment crashed: {e}")
+        return {
+            "status": "ANALYSIS",
+            "decision": "MANUAL_REVIEW",
+            "risk_metrics": {},
+            "errors": _append_error(state, "risk_assessment", str(e)),
+            "audit_trail": _audit(state, "UnderwritingAnalystAgent", "risk_assessment", f"ERROR: {e}"),
+        }
 
 
 def human_checkpoint(state: dict) -> dict:
@@ -292,23 +360,34 @@ def draft_decline(state: dict) -> dict:
     Agent: Broker Liaison Agent
     """
     logger.info(f"[{state['submission_id']}] NODE: draft_decline")
-    extracted = state.get("extracted_data") or {}
-    failed = state.get("validation_result", {}).get("failed_rules", [])
 
-    result = draft_decline_letter(
-        state.get("broker_email", ""),
-        state.get("broker_name", ""),
-        extracted.get("applicant_name", "Unknown"),
-        failed,
-    )
+    try:
+        extracted = state.get("extracted_data") or {}
+        failed = state.get("validation_result", {}).get("failed_rules", [])
 
-    return {
-        "drafted_email": result.data if result.success else None,
-        "status": "COMPLETED",
-        "decision": "DECLINED",
-        "audit_trail": _audit(state, "BrokerLiaisonAgent", "draft_decline_letter",
-                               f"failed_rules={len(failed)}"),
-    }
+        result = draft_decline_letter(
+            state.get("broker_email", ""),
+            state.get("broker_name", ""),
+            extracted.get("applicant_name", "Unknown"),
+            failed,
+        )
+
+        return {
+            "drafted_email": result.data if result.success else None,
+            "status": "COMPLETED",
+            "decision": "DECLINED",
+            "audit_trail": _audit(state, "BrokerLiaisonAgent", "draft_decline_letter",
+                                   f"failed_rules={len(failed)}"),
+        }
+
+    except Exception as e:
+        logger.error(f"[{state.get('submission_id')}] draft_decline crashed: {e}")
+        return {
+            "status": "COMPLETED",
+            "decision": "DECLINED",
+            "errors": _append_error(state, "draft_decline", str(e)),
+            "audit_trail": _audit(state, "BrokerLiaisonAgent", "draft_decline_letter", f"ERROR: {e}"),
+        }
 
 
 def generate_quote(state: dict) -> dict:
@@ -317,31 +396,42 @@ def generate_quote(state: dict) -> dict:
     Agent: Broker Liaison Agent
     """
     logger.info(f"[{state['submission_id']}] NODE: generate_quote")
-    extracted = state.get("extracted_data") or {}
-    risk = state.get("risk_metrics") or {}
-    premium = risk.get("annual_premium", 0)
-    applicant_name = extracted.get("applicant_name", "Unknown")
 
-    pdf = generate_quote_pdf(extracted, risk, premium, applicant_name)
-    pdf_url = pdf.data.get("quote_pdf_s3_url", "") if pdf.success else ""
+    try:
+        extracted = state.get("extracted_data") or {}
+        risk = state.get("risk_metrics") or {}
+        premium = risk.get("annual_premium", 0)
+        applicant_name = extracted.get("applicant_name", "Unknown")
 
-    email = draft_quote_email(
-        state.get("broker_email", ""),
-        state.get("broker_name", ""),
-        applicant_name,
-        premium,
-        "1 year",
-        pdf_url,
-    )
+        pdf = generate_quote_pdf(extracted, risk, premium, applicant_name)
+        pdf_url = pdf.data.get("quote_pdf_s3_url", "") if pdf.success else ""
 
-    return {
-        "quote_pdf_url": pdf_url,
-        "drafted_email": email.data if email.success else None,
-        "status": "COMPLETED",
-        "decision": "QUOTED",
-        "audit_trail": _audit(state, "BrokerLiaisonAgent", "generate_quote_package",
-                               f"premium=${premium:.2f}"),
-    }
+        email = draft_quote_email(
+            state.get("broker_email", ""),
+            state.get("broker_name", ""),
+            applicant_name,
+            premium,
+            "1 year",
+            pdf_url,
+        )
+
+        return {
+            "quote_pdf_url": pdf_url,
+            "drafted_email": email.data if email.success else None,
+            "status": "COMPLETED",
+            "decision": "QUOTED",
+            "audit_trail": _audit(state, "BrokerLiaisonAgent", "generate_quote_package",
+                                   f"premium=${premium:.2f}"),
+        }
+
+    except Exception as e:
+        logger.error(f"[{state.get('submission_id')}] generate_quote crashed: {e}")
+        return {
+            "status": "COMPLETED",
+            "decision": "QUOTED",
+            "errors": _append_error(state, "generate_quote", str(e)),
+            "audit_trail": _audit(state, "BrokerLiaisonAgent", "generate_quote_package", f"ERROR: {e}"),
+        }
 
 
 def update_state_node(state: dict) -> dict:
@@ -366,6 +456,8 @@ def update_state_node(state: dict) -> dict:
 def is_data_complete(state: dict) -> str:
     """Conditional Edge: Is Data Complete?"""
     validation = state.get("validation_result", {})
+    if not isinstance(validation, dict):
+        return "missing_docs"
     missing = validation.get("missing_critical_docs", [])
     if missing or state.get("decision") == "MISSING_INFO":
         return "missing_docs"
@@ -387,7 +479,7 @@ def human_decision(state: dict) -> str:
     decision = state.get("decision", "MANUAL_REVIEW")
     override = state.get("human_override", {})
 
-    if override:
+    if isinstance(override, dict) and override:
         decision = override.get("new_decision", decision)
 
     if decision == "DECLINED":
@@ -408,20 +500,20 @@ def build_underwriting_graph() -> StateGraph:
 
     Flow:
       START
-        → ingest_and_classify
-        → check_data_completeness
-        → [Conditional: is_data_complete]
-            ├─ missing_docs → draft_missing_info → END
-            └─ data_complete → enrichment
-                → check_knockout_rules
-                → [Conditional: knockout_check]
-                    ├─ fail → draft_decline → END
-                    └─ pass → risk_assessment
-                        → human_checkpoint
-                        → [Conditional: human_decision]
-                            ├─ approve → generate_quote → END
-                            ├─ decline → draft_decline → END
-                            └─ modify  → update_state → risk_assessment (loop)
+        -> ingest_and_classify
+        -> check_data_completeness
+        -> [Conditional: is_data_complete]
+            +- missing_docs -> draft_missing_info -> END
+            +- data_complete -> enrichment
+                -> check_knockout_rules
+                -> [Conditional: knockout_check]
+                    +- fail -> draft_decline -> END
+                    +- pass -> risk_assessment
+                        -> human_checkpoint
+                        -> [Conditional: human_decision]
+                            +- approve -> generate_quote -> END
+                            +- decline -> draft_decline -> END
+                            +- modify  -> update_state -> risk_assessment (loop)
     """
     graph = StateGraph(UnderwritingState)
 

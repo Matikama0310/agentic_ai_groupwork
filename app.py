@@ -40,17 +40,83 @@ sm = st.session_state.state_manager
 st.sidebar.title("NorthStar Insurance")
 st.sidebar.subheader("Submit New Application")
 
+# Preset scenarios for quick testing
+_PRESETS = {
+    "Custom (type your own)": {
+        "subject": "",
+        "body": "",
+        "broker_email": "broker@example.com",
+        "broker_name": "John Smith",
+    },
+    "Restaurant - QUOTED ($2,800)": {
+        "subject": "Application for Acme Restaurant Inc.",
+        "body": (
+            "We are submitting an application for general liability coverage for Acme Restaurant Inc., "
+            "a full-service restaurant located at 123 Main St, Springfield, IL. "
+            "The business has been operating since 2015 with 12 employees and $500,000 annual revenue."
+        ),
+        "broker_email": "broker@example.com",
+        "broker_name": "John Smith",
+    },
+    "Tech Startup - QUOTED ($306)": {
+        "subject": "Application for TechStart LLC",
+        "body": (
+            "We need general liability coverage for TechStart LLC, a software company "
+            "at 456 Oak Ave, Boston, MA 02101. Founded in 2024 with 2 employees and $50,000 annual revenue."
+        ),
+        "broker_email": "jane@techbroker.com",
+        "broker_name": "Jane Lee",
+    },
+    "New Bakery - DECLINED (< 2 yrs)": {
+        "subject": "Insurance request for Fresh Bakery Corp",
+        "body": (
+            "New bakery started in 2025 with 3 employees, revenue $80,000, "
+            "located at 789 Pine Rd, Miami, FL 33101."
+        ),
+        "broker_email": "bob@insurancebrokers.com",
+        "broker_name": "Bob Martinez",
+    },
+    "Incomplete Info - MISSING_INFO": {
+        "subject": "Help",
+        "body": "Need insurance for my business.",
+        "broker_email": "info@broker.com",
+        "broker_name": "Sarah",
+    },
+    "Large Manufacturer - QUOTED ($27,500)": {
+        "subject": "Application for Midwest Manufacturing Corp.",
+        "body": (
+            "Requesting general liability coverage for Midwest Manufacturing Corp., "
+            "a manufacturing plant at 2200 Industrial Blvd, Detroit, MI 48201. "
+            "Established in 1998 with 120 employees and $2,500,000 annual revenue. "
+            "Debt-to-equity ratio is 2.1."
+        ),
+        "broker_email": "mike@commercialbrokers.com",
+        "broker_name": "Mike Chen",
+    },
+    "Medical Clinic - QUOTED ($1,725)": {
+        "subject": "Application for Springfield Health Clinic LLC",
+        "body": (
+            "Submitting an application for general liability coverage for Springfield Health Clinic LLC, "
+            "a health clinic at 500 Wellness Dr, Springfield, MO 65801. "
+            "Operating since 2018 with 15 employees and $300,000 annual revenue."
+        ),
+        "broker_email": "lisa@healthinsurance.com",
+        "broker_name": "Lisa Park",
+    },
+}
+
+preset_choice = st.sidebar.selectbox("Scenario Preset", list(_PRESETS.keys()), index=1)
+preset = _PRESETS[preset_choice]
+
 with st.sidebar.form("submission_form"):
-    email_subject = st.text_input("Email Subject", value="Application for Acme Restaurant Inc.")
+    email_subject = st.text_input("Email Subject", value=preset["subject"])
     email_body = st.text_area(
         "Email Body",
-        value="We are submitting an application for general liability coverage for Acme Restaurant Inc., "
-              "a full-service restaurant located at 123 Main St, Springfield, IL. "
-              "The business has been operating since 2015 with 12 employees and $500,000 annual revenue.",
+        value=preset["body"],
         height=150,
     )
-    broker_email = st.text_input("Broker Email", value="broker@example.com")
-    broker_name = st.text_input("Broker Name", value="John Smith")
+    broker_email = st.text_input("Broker Email", value=preset["broker_email"])
+    broker_name = st.text_input("Broker Name", value=preset["broker_name"])
     submitted = st.form_submit_button("Submit Application", type="primary")
 
 if submitted:

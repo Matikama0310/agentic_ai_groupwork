@@ -8,7 +8,8 @@
       "Bash(git pull:*)",
       "Bash(pip install:*)",
       "Bash(curl:*)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(./venv/Scripts/pip:*)"
     ]
   }
 }

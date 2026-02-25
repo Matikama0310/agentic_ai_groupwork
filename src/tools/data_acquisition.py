@@ -25,31 +25,41 @@ def internal_claims_history(
     Fetch prior loss history from internal claims / CRM systems.
     MVP: returns mock data.  Production: SQL query or RPA bridge.
     """
-    loss_runs = [
-        {
-            "claim_id": "CLM-2022-001",
-            "loss_date": "2022-06-15",
-            "amount": 5000,
-            "description": "Water damage from burst pipe",
-        },
-        {
-            "claim_id": "CLM-2020-001",
-            "loss_date": "2020-11-20",
-            "amount": 3000,
-            "description": "Equipment damage",
-        },
-    ]
+    try:
+        if not isinstance(applicant_id, str) or not applicant_id.strip():
+            return ToolResult(False, {}, error="applicant_id is required and must be a non-empty string")
+        if not isinstance(date_range_years, int) or date_range_years < 1:
+            date_range_years = 5
 
-    return ToolResult(
-        True,
-        {
-            "loss_runs": loss_runs,
-            "total_losses": 8000,
-            "loss_frequency": 2,
-            "loss_ratio": 0.016,
-            "policy_history": ["POL-2021-001", "POL-2022-001"],
-        },
-    )
+        loss_runs = [
+            {
+                "claim_id": "CLM-2022-001",
+                "loss_date": "2022-06-15",
+                "amount": 5000,
+                "description": "Water damage from burst pipe",
+            },
+            {
+                "claim_id": "CLM-2020-001",
+                "loss_date": "2020-11-20",
+                "amount": 3000,
+                "description": "Equipment damage",
+            },
+        ]
+
+        return ToolResult(
+            True,
+            {
+                "loss_runs": loss_runs,
+                "total_losses": 8000,
+                "loss_frequency": 2,
+                "loss_ratio": 0.016,
+                "policy_history": ["POL-2021-001", "POL-2022-001"],
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"internal_claims_history failed: {e}")
+        return ToolResult(False, {}, error=f"Claims lookup failed: {e}")
 
 
 def fetch_external_data(
@@ -61,21 +71,29 @@ def fetch_external_data(
     Fetch external risk data from third-party bureaus.
     MVP: mock.  Production: API calls to D&B, HazardHub, Verisk, Google Maps.
     """
-    return ToolResult(
-        True,
-        {
-            "credit_score": 720,
-            "financial_health": "good",
-            "duns_number": "12-345-6789",
-            "property_risk": {
-                "flood_zone": "X (minimal)",
-                "distance_to_fire_station_miles": 2.5,
-                "crime_score": 35,
-                "roof_condition": "good",
-                "year_built": 2005,
+    try:
+        if not isinstance(applicant_name, str) or not applicant_name.strip():
+            return ToolResult(False, {}, error="applicant_name is required and must be a non-empty string")
+
+        return ToolResult(
+            True,
+            {
+                "credit_score": 720,
+                "financial_health": "good",
+                "duns_number": "12-345-6789",
+                "property_risk": {
+                    "flood_zone": "X (minimal)",
+                    "distance_to_fire_station_miles": 2.5,
+                    "crime_score": 35,
+                    "roof_condition": "good",
+                    "year_built": 2005,
+                },
             },
-        },
-    )
+        )
+
+    except Exception as e:
+        logger.error(f"fetch_external_data failed: {e}")
+        return ToolResult(False, {}, error=f"External data fetch failed: {e}")
 
 
 def web_research_applicant(
@@ -87,14 +105,22 @@ def web_research_applicant(
     MVP: mock.  Production: headless browser + search API.
     Checks: business operations match application, reviews, health inspections, etc.
     """
-    return ToolResult(
-        True,
-        {
-            "website_verified": True,
-            "business_operations": "Full-service restaurant with dine-in and takeout",
-            "risk_flags": [],
-            "public_reviews_summary": "Positive reviews; 4.5/5 stars on Google",
-            "health_inspection": "Passed - last inspection 2025-11-15",
-            "alcohol_served": False,
-        },
-    )
+    try:
+        if not isinstance(applicant_name, str) or not applicant_name.strip():
+            return ToolResult(False, {}, error="applicant_name is required and must be a non-empty string")
+
+        return ToolResult(
+            True,
+            {
+                "website_verified": True,
+                "business_operations": "Full-service restaurant with dine-in and takeout",
+                "risk_flags": [],
+                "public_reviews_summary": "Positive reviews; 4.5/5 stars on Google",
+                "health_inspection": "Passed - last inspection 2025-11-15",
+                "alcohol_served": False,
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"web_research_applicant failed: {e}")
+        return ToolResult(False, {}, error=f"Web research failed: {e}")

@@ -5,7 +5,7 @@ Handles CRUD operations, overrides, and state transitions.
 """
 
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, UTC
 import json
 import logging
 from dataclasses import dataclass, field, asdict
@@ -32,6 +32,10 @@ class DecisionType(str, Enum):
     MISSING_INFO = "MISSING_INFO"
     MANUAL_REVIEW = "MANUAL_REVIEW"
     UNKNOWN = "UNKNOWN"
+
+
+_VALID_DECISIONS = {d.value for d in DecisionType}
+_VALID_STATUSES = {s.value for s in SubmissionStatus}
 
 
 @dataclass
@@ -65,48 +69,48 @@ class SubmissionState:
     submission_id: str
     created_at: str
     updated_at: str
-    
+
     # Input
     email_subject: str
     email_body: str
     broker_email: str
     broker_name: str
     attachments: List[Dict[str, Any]] = field(default_factory=list)
-    
+
     # Phase 1: Extraction
     extracted_data: Optional[Dict[str, Any]] = None
     extraction_confidence: Optional[float] = None
     document_types: Optional[List[str]] = None
-    
+
     # Phase 2a: Enrichment (parallel)
     internal_data: Optional[Dict[str, Any]] = None
     external_data: Optional[Dict[str, Any]] = None
     web_data: Optional[Dict[str, Any]] = None
-    
+
     # Phase 2b: Analysis
     naics_code: Optional[str] = None
     classification_confidence: Optional[float] = None
     validation_result: Optional[Dict[str, Any]] = None
     risk_metrics: Optional[Dict[str, Any]] = None
-    
+
     # Phase 3: Output
     decision: str = DecisionType.UNKNOWN.value
     drafted_email: Optional[Dict[str, Any]] = None
     quote_pdf_url: Optional[str] = None
-    
+
     # Metadata
     status: str = SubmissionStatus.INGESTION.value
     errors: List[Dict[str, Any]] = field(default_factory=list)
     audit_trail: List[AuditEntry] = field(default_factory=list)
     overrides: List[Override] = field(default_factory=list)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
         data = asdict(self)
         # Convert dataclass objects to dicts
-        data['audit_trail'] = [asdict(entry) if isinstance(entry, AuditEntry) else entry 
+        data['audit_trail'] = [asdict(entry) if isinstance(entry, AuditEntry) else entry
                                for entry in self.audit_trail]
-        data['overrides'] = [asdict(override) if isinstance(override, Override) else override 
+        data['overrides'] = [asdict(override) if isinstance(override, Override) else override
                             for override in self.overrides]
         return data
 
@@ -114,72 +118,65 @@ class SubmissionState:
 class StateManager:
     """
     In-memory state management for submissions.
-    
+
     For MVP: Uses a simple in-memory dict.
     For production: Replace with DynamoDB or similar.
     """
-    
+
     def __init__(self):
         """Initialize state store"""
         self._store: Dict[str, SubmissionState] = {}
         logger.info("StateManager initialized (in-memory backend)")
-    
+
     def create_state(self, submission_id: str, email_subject: str, email_body: str,
-                    broker_email: str, broker_name: str, 
+                    broker_email: str, broker_name: str,
                     attachments: List[Dict[str, Any]]) -> SubmissionState:
         """
         Create initial state for a new submission.
-        
-        Args:
-            submission_id: Unique submission identifier
-            email_subject: Email subject line
-            email_body: Email body text
-            broker_email: Broker's email address
-            broker_name: Broker's name
-            attachments: List of attachment dicts {filename, content, type}
-        
-        Returns:
-            SubmissionState object
+
+        Raises:
+            ValueError: if submission_id is empty or already exists
         """
-        now = datetime.utcnow().isoformat()
-        
+        if not isinstance(submission_id, str) or not submission_id.strip():
+            raise ValueError("submission_id must be a non-empty string")
+        if submission_id in self._store:
+            raise ValueError(f"Submission {submission_id} already exists")
+
+        now = datetime.now(UTC).isoformat()
+
         state = SubmissionState(
             submission_id=submission_id,
             created_at=now,
             updated_at=now,
-            email_subject=email_subject,
-            email_body=email_body,
-            broker_email=broker_email,
-            broker_name=broker_name,
-            attachments=attachments
+            email_subject=email_subject or "",
+            email_body=email_body or "",
+            broker_email=broker_email or "",
+            broker_name=broker_name or "",
+            attachments=attachments if isinstance(attachments, list) else [],
         )
-        
+
         self._store[submission_id] = state
         logger.info(f"State created for submission {submission_id}")
         return state
-    
+
     def get_state(self, submission_id: str) -> Optional[SubmissionState]:
         """Retrieve state for a submission"""
         state = self._store.get(submission_id)
         if not state:
             logger.warning(f"State not found for submission {submission_id}")
         return state
-    
+
     def update_state(self, submission_id: str, **kwargs) -> SubmissionState:
         """
         Update state with new values.
-        
-        Args:
-            submission_id: Submission ID
-            **kwargs: Fields to update (e.g., extracted_data={...}, status="ENRICHMENT")
-        
-        Returns:
-            Updated SubmissionState
+
+        Raises:
+            ValueError: if submission not found or field not allowed
         """
         state = self.get_state(submission_id)
         if not state:
             raise ValueError(f"State not found for submission {submission_id}")
-        
+
         # Update allowed fields
         allowed_fields = {
             'extracted_data', 'extraction_confidence', 'document_types',
@@ -188,73 +185,77 @@ class StateManager:
             'risk_metrics', 'decision', 'drafted_email', 'quote_pdf_url',
             'status', 'errors'
         }
-        
+
         for key, value in kwargs.items():
             if key not in allowed_fields:
                 raise ValueError(f"Cannot update field {key}; not in allowed_fields")
+            # Validate decision values
+            if key == 'decision' and isinstance(value, str) and value not in _VALID_DECISIONS:
+                logger.warning(f"Non-standard decision value: {value}")
+            # Validate status values
+            if key == 'status' and isinstance(value, str) and value not in _VALID_STATUSES:
+                logger.warning(f"Non-standard status value: {value}")
             setattr(state, key, value)
-        
-        state.updated_at = datetime.utcnow().isoformat()
+
+        state.updated_at = datetime.now(UTC).isoformat()
         logger.info(f"State updated for submission {submission_id}: {list(kwargs.keys())}")
         return state
-    
+
     def add_audit_entry(self, submission_id: str, component: str, action: str,
                        details: Dict[str, Any], result: Optional[str] = None,
                        error: Optional[str] = None) -> None:
         """
         Add an entry to the audit trail.
-        
-        Args:
-            submission_id: Submission ID
-            component: Name of agent/tool that performed action
-            action: Description of action (e.g., "classify_naics_code")
-            details: Dict of relevant details (inputs to tool)
-            result: Result of action (if successful)
-            error: Error message (if failed)
+
+        Raises:
+            ValueError: if submission not found
         """
         state = self.get_state(submission_id)
         if not state:
             raise ValueError(f"State not found for submission {submission_id}")
-        
+
         entry = AuditEntry(
-            timestamp=datetime.utcnow().isoformat(),
-            component=component,
-            action=action,
-            details=details,
+            timestamp=datetime.now(UTC).isoformat(),
+            component=component or "unknown",
+            action=action or "unknown",
+            details=details if isinstance(details, dict) else {},
             result=result,
             error=error
         )
-        
+
         state.audit_trail.append(entry)
         logger.info(f"Audit entry added for submission {submission_id}: {action}")
-    
-    def apply_override(self, submission_id: str, user_id: str, 
+
+    def apply_override(self, submission_id: str, user_id: str,
                       override_decision: str, override_reason: str) -> None:
         """
         Apply a human override to a submission's decision.
-        
-        Args:
-            submission_id: Submission ID
-            user_id: User ID who made the override
-            override_decision: New decision (e.g., "QUOTED")
-            override_reason: Reason for override
+
+        Raises:
+            ValueError: if submission not found, user_id missing, decision invalid, or reason empty
         """
         state = self.get_state(submission_id)
         if not state:
             raise ValueError(f"State not found for submission {submission_id}")
-        
+        if not isinstance(user_id, str) or not user_id.strip():
+            raise ValueError("user_id is required")
+        if override_decision not in _VALID_DECISIONS:
+            raise ValueError(f"Invalid decision: {override_decision!r}. Must be one of {_VALID_DECISIONS}")
+        if not isinstance(override_reason, str) or not override_reason.strip():
+            raise ValueError("override_reason is required")
+
         override = Override(
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             user_id=user_id,
             override_decision=override_decision,
             override_reason=override_reason,
             previous_decision=state.decision
         )
-        
+
         state.overrides.append(override)
         state.decision = override_decision
-        state.updated_at = datetime.utcnow().isoformat()
-        
+        state.updated_at = datetime.now(UTC).isoformat()
+
         logger.warning(f"Override applied to submission {submission_id}: "
                       f"{state.decision} -> {override_decision} (reason: {override_reason})")
         self.add_audit_entry(
@@ -264,21 +265,13 @@ class StateManager:
             details={"override_reason": override_reason},
             result=f"Decision changed to {override_decision}"
         )
-    
+
     def get_submission_summary(self, submission_id: str) -> Dict[str, Any]:
-        """
-        Get a summary of submission state (for API responses).
-        
-        Args:
-            submission_id: Submission ID
-        
-        Returns:
-            Dict summary
-        """
+        """Get a summary of submission state (for API responses)."""
         state = self.get_state(submission_id)
         if not state:
             return {"error": f"Submission {submission_id} not found"}
-        
+
         return {
             "submission_id": submission_id,
             "status": state.status,
@@ -292,24 +285,16 @@ class StateManager:
             "overrides_count": len(state.overrides),
             "audit_trail_length": len(state.audit_trail)
         }
-    
+
     def list_submissions(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        List all submissions, optionally filtered by status.
-        
-        Args:
-            status: Optional filter (e.g., "COMPLETED", "FAILED")
-        
-        Returns:
-            List of submission summaries
-        """
+        """List all submissions, optionally filtered by status."""
         result = []
         for submission_id, state in self._store.items():
             if status and state.status != status:
                 continue
             result.append(self.get_submission_summary(submission_id))
         return result
-    
+
     def delete_state(self, submission_id: str) -> None:
         """Delete state (use with caution; may break audit trail)"""
         if submission_id in self._store:
